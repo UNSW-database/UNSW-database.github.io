@@ -7636,7 +7636,7 @@ textarea.form-control-lg {
 }
 
 .fw-normal {
-  font-weight: 400 !important;
+  font-weight: 330 !important;
 }
 
 .fw-bold {
@@ -7771,7 +7771,7 @@ textarea.form-control-lg {
 
 .text-muted {
   --bs-text-opacity: 1;
-  color: #6c757d !important;
+  color: black;
 }
 
 .text-black-50 {
@@ -11307,4 +11307,9 @@ html {
   background-position: center;
   background-repeat: no-repeat;
   min-height: 15rem;
+}
+
+a {
+  color: black;
+  text-decoration: none;
 }
