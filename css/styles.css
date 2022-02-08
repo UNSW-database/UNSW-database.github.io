@@ -7636,7 +7636,7 @@ textarea.form-control-lg {
 }
 
 .fw-normal {
-  font-weight: 330 !important;
+  font-weight: 400 !important;
 }
 
 .fw-bold {
@@ -7771,7 +7771,7 @@ textarea.form-control-lg {
 
 .text-muted {
   --bs-text-opacity: 1;
-  color: black;
+  color: #6c757d !important;
 }
 
 .text-black-50 {
@@ -11289,6 +11289,7 @@ textarea.form-control-lg {
 body,
 html {
   height: 100%;
+  font-family: Clancy, Arial, sans-serif;
 }
 
 .feature {
@@ -11312,4 +11313,99 @@ html {
 a {
   color: black;
   text-decoration: none;
+}
+
+.people-title {
+  margin-top: 3%;
+  margin-bottom: 3%;
+}
+
+.avatar {
+  vertical-align: middle;
+  width: 160px;
+  height: 170px;
+  border-radius: 50%;
+}
+
+.l {
+  margin-top: 3%;
+}
+
+.title {
+  margin-top: 2%;
+}
+
+.publications {
+  color: black;
+  font-weight: 300;
+}
+
+ol, ul, dl {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.mb-5, .my-5 {
+  margin-bottom: 3rem !important;
+}
+
+ol {
+  display: block;
+  list-style-type: decimal;
+  -webkit-margin-before: 1em;
+          margin-block-start: 1em;
+  -webkit-margin-after: 1em;
+          margin-block-end: 1em;
+  -webkit-margin-start: 0px;
+          margin-inline-start: 0px;
+  -webkit-margin-end: 0px;
+          margin-inline-end: 0px;
+  -webkit-padding-start: 40px;
+          padding-inline-start: 40px;
+}
+
+.mb-3, .my-3 {
+  margin-bottom: 1rem !important;
+}
+
+li {
+  display: list-item;
+  text-align: -webkit-match-parent;
+}
+
+p {
+  display: block;
+  -webkit-margin-before: 1em;
+          margin-block-start: 1em;
+  -webkit-margin-after: 1em;
+          margin-block-end: 1em;
+  -webkit-margin-start: 0px;
+          margin-inline-start: 0px;
+  -webkit-margin-end: 0px;
+          margin-inline-end: 0px;
+}
+
+.text-dark {
+  color: #000 !important;
+}
+
+.publications .paper-title {
+  font-weight: normal;
+}
+
+.mb-0, .my-0 {
+  margin-bottom: 0 !important;
+  margin-top: 8px !important;
+}
+
+.addi {
+  margin-top: 0;
+}
+
+.card-course {
+  height: 100%;
+}
+
+.col-xl-4 {
+  margin-top: 2%;
 }
