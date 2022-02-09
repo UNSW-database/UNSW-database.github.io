@@ -3,8 +3,8 @@
 const _ = require('lodash');
 const chokidar = require('chokidar');
 const upath = require('upath');
-const renderAssets = require('./render-assets');
-const renderPug = require('./render-pug');
+// const renderAssets = require('./render-assets');
+// const renderPug = require('./render-pug');
 const renderScripts = require('./render-scripts');
 const renderSCSS = require('./render-scss');
 
@@ -14,9 +14,9 @@ const watcher = chokidar.watch('src', {
 
 let READY = false;
 
-process.title = 'pug-watch';
-process.stdout.write('Loading');
-let allPugFiles = {};
+// process.title = 'pug-watch';
+// process.stdout.write('Loading');
+// let allPugFiles = {};
 
 watcher.on('add', filePath => _processFile(upath.normalize(filePath), 'add'));
 watcher.on('change', filePath => _processFile(upath.normalize(filePath), 'change'));
@@ -29,21 +29,21 @@ _handleSCSS();
 
 function _processFile(filePath, watchEvent) {
     
-    if (!READY) {
-        if (filePath.match(/\.pug$/)) {
-            if (!filePath.match(/includes/) && !filePath.match(/mixins/) && !filePath.match(/\/pug\/layouts\//)) {
-                allPugFiles[filePath] = true;
-            }    
-        }    
-        process.stdout.write('.');
-        return;
-    }
+    // if (!READY) {
+    //     if (filePath.match(/\.pug$/)) {
+    //         if (!filePath.match(/includes/) && !filePath.match(/mixins/) && !filePath.match(/\/pug\/layouts\//)) {
+    //             allPugFiles[filePath] = true;
+    //         }    
+    //     }    
+    //     process.stdout.write('.');
+    //     return;
+    // }
 
-    console.log(`### INFO: File event: ${watchEvent}: ${filePath}`);
+    // console.log(`### INFO: File event: ${watchEvent}: ${filePath}`);
 
-    if (filePath.match(/\.pug$/)) {
-        return _handlePug(filePath, watchEvent);
-    }
+    // if (filePath.match(/\.pug$/)) {
+    //     return _handlePug(filePath, watchEvent);
+    // }
 
     if (filePath.match(/\.scss$/)) {
         if (watchEvent === 'change') {
@@ -56,30 +56,30 @@ function _processFile(filePath, watchEvent) {
         return renderScripts();
     }
 
-    if (filePath.match(/src\/assets\//)) {
-        return renderAssets();
-    }
+    // if (filePath.match(/src\/assets\//)) {
+    //     return renderAssets();
+    // }
 
 }
 
-function _handlePug(filePath, watchEvent) {
-    if (watchEvent === 'change') {
-        if (filePath.match(/includes/) || filePath.match(/mixins/) || filePath.match(/\/pug\/layouts\//)) {
-            return _renderAllPug();
-        }
-        return renderPug(filePath);
-    }
-    if (!filePath.match(/includes/) && !filePath.match(/mixins/) && !filePath.match(/\/pug\/layouts\//)) {
-        return renderPug(filePath);
-    }
-}
+// function _handlePug(filePath, watchEvent) {
+//     if (watchEvent === 'change') {
+//         if (filePath.match(/includes/) || filePath.match(/mixins/) || filePath.match(/\/pug\/layouts\//)) {
+//             return _renderAllPug();
+//         }
+//         return renderPug(filePath);
+//     }
+//     if (!filePath.match(/includes/) && !filePath.match(/mixins/) && !filePath.match(/\/pug\/layouts\//)) {
+//         return renderPug(filePath);
+//     }
+// }
 
-function _renderAllPug() {
-    console.log('### INFO: Rendering All');
-    _.each(allPugFiles, (value, filePath) => {
-        renderPug(filePath);
-    });
-}
+// function _renderAllPug() {
+//     console.log('### INFO: Rendering All');
+//     _.each(allPugFiles, (value, filePath) => {
+//         renderPug(filePath);
+//     });
+// }
 
 function _handleSCSS() {
     renderSCSS();
