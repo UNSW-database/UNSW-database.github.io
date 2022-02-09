@@ -13,12 +13,12 @@
         <!-- Core theme CSS (includes Bootstrap)-->
         <link href="css/styles.css" rel="stylesheet" />
     </head>
-    <body class="d-flex flex-column">
+    <body class="d-flex flex-column h-100">
         <main class="flex-shrink-0">
             <!-- Navigation-->
-            <nav class="navbar navbar-expand-lg navbar-dark bg-dark" id="topheader">
+            <nav class="navbar navbar-expand-lg navbar-dark bg-primary" id="topheader">
                 <div class="container px-5">
-                    <a class="navbar-brand" href="index.html">DKR</a>
+                    <a class="navbar-brand fw-bold" href="index.html">DKR</a>
                     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
                     <div class="collapse navbar-collapse" id="navbarSupportedContent">
                         <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
@@ -26,42 +26,66 @@
                             <li class="nav-item"><a class="nav-link" href="people.html" id="people">People</a></li>
                             <li class="nav-item"><a class="nav-link" href="project.html" id="project">Projects</a></li>
                             <li class="nav-item"><a class="nav-link" href="publication.html" id="publication">Publications</a></li>
-                            <li class="nav-item"><a class="nav-link" href="student.html" id="student">Potential Students</a></li>
-                            <li class="nav-item"><a class="nav-link" href="course.html" id="course">Courses</a></li>
+                            <li class="nav-item"><a class="nav-link text-white" href="course.html" id="course">Courses</a></li>
                             <li class="nav-item"><a class="nav-link" href="news.html" id="news">News</a></li>
                             <li class="nav-item"><a class="nav-link" href="contact.html" id="contact">Contact</a></li>
                         </ul>
                     </div>
                 </div>
             </nav>
-            <!-- Page content-->
-            <section class="py-5">
+
+            <!-- Header-->
+            <header class="bg-primary py-1">
                 <div class="container px-5">
-                    <div class="text-center mb-5"><h1 class="fw-bolder">Contact</h1></div>
-                    <div class="bg rounded-3 py-5 px-4 px-md-5 mb-5">
-                        <figure class="mb-4"><img class="img-fluid rounded" src="assets/unsw.png" /></figure>
+                    <div class="row gx-5 align-items-center justify-content-center">
+                        <div class="col-lg-8 col-xxl-6">
+                            <div class="my-5 text-center">
+                                <h1 class="fw-bolder text-white mb-4">Courses Delivered by DKR</h1>
+                            </div>
+                        </div>
                     </div>
-                    <!--Contact cards-->
-                    <div class="row gx-5 row-cols-2 row-cols-lg-4 py-5">
-                        <div class="col">
-                            <div class="feature bg-primary bg-gradient text-white rounded-3 mb-3"><i class="bi bi-envelope-fill"></i></div>
-                            <div class="h5 mb-2">Chat with us</div>
-                            <p class="text-muted mb-0"><a href="mailto:wenjie.zhang@unsw.edu.au">wenjie.zhang@unsw.edu.au</a></p>
+                </div>
+            </header>
+            <!-- Page Content-->
+            <section class="py-5 mt-5">
+                <div class="container px-lg-5">
+                    <!-- Page Features-->
+                    <div class="row gx-lg-5">
+                        <div class="col-lg-6 col-xxl-4 mb-5">
+                            <div class="card bg-light border-0 h-100">
+                                <div class="card-body text-center p-4 p-lg-5 pt-0 pt-lg-0">
+                                    <div class="feature bg-primary text-white rounded-3 mb-4 mt-n4"><i class="bi bi-collection"></i></div>
+                                    <h2 class="fs-4 fw-bold">COMP3311</h2>
+                                    <p class="fs-5 mb-0">Database Systems (UG)</p>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col">
-                            <div class="feature bg-primary bg-gradient text-white rounded-3 mb-3"><i class="bi bi-telephone"></i></div>
-                            <div class="h5">Call us</div>
-                            <p class="text-muted mb-0"><a href="tel:%28+61%202%29%2093857799">(+61 2) 93857799</a></p>
+                        <div class="col-lg-6 col-xxl-4 mb-5">
+                            <div class="card bg-light border-0 h-100">
+                                <div class="card-body text-center p-4 p-lg-5 pt-0 pt-lg-0">
+                                    <div class="feature bg-primary text-white rounded-3 mb-4 mt-n4"><i class="bi bi-cloud-download"></i></div>
+                                    <h2 class="fs-4 fw-bold">COMP9311</h2>
+                                    <p class="fs-5 mb-0">Database Systems (PG)</p>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col">
-                            <div class="feature bg-primary bg-gradient text-white rounded-3 mb-3"><i class="bi bi-map"></i></div>
-                            <div class="h5">Find us</div>
-                            <p class="text-muted mb-0"><a href="https://www.google.com/maps/place/School+of+Computer+Science+and+Engineering/@-33.9188215,151.2298736,18z/data=!4m9!1m2!2m1!1sk17+unsw!3m5!1s0x15b83a85cd43ded:0xae9b690cb686f09f!8m2!3d-33.9188215!4d151.2309679!15sCghrMTcgdW5zd1oKIghrMTcgdW5zd5IBFXVuaXZlcnNpdHlfZGVwYXJ0bWVudA">K17 High St, Kensington, Sydney, NSW 2032</a></p>
+                        <div class="col-lg-6 col-xxl-4 mb-5">
+                            <div class="card bg-light border-0 h-100">
+                                <div class="card-body text-center p-4 p-lg-5 pt-0 pt-lg-0">
+                                    <div class="feature bg-primary text-white rounded-3 mb-4 mt-n4"><i class="bi bi-cloud-download"></i></div>
+                                    <h2 class="fs-4 fw-bold">COMP9312</h2>
+                                    <p class="fs-5 mb-0">Data Analytics for Graphs</p>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col">
-                            <div class="feature bg-primary bg-gradient text-white rounded-3 mb-3"><i class="bi bi-calendar"></i></div>
-                            <div class="h5">Working time</div>
-                            <p class="text-muted mb-0">Monday-Friday 10:00 to 17:00</p>
+                        <div class="col-lg-6 col-xxl-4 mb-5">
+                            <div class="card bg-light border-0 h-100">
+                                <div class="card-body text-center p-4 p-lg-5 pt-0 pt-lg-0">
+                                    <div class="feature bg-primary text-white rounded-3 mb-4 mt-n4"><i class="bi bi-cloud-download"></i></div>
+                                    <h2 class="fs-4 fw-bold">COMP9313</h2>
+                                    <p class="fs-5 mb-0">Big data</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -91,10 +115,5 @@
         <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"></script>
         <!-- Core theme JS-->
         <script src="js/scripts.js"></script>
-        <!-- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *-->
-        <!-- * *                               SB Forms JS                               * *-->
-        <!-- * * Activate your form at https://startbootstrap.com/solution/contact-forms * *-->
-        <!-- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *-->
-        <!--script(src='https://cdn.startbootstrap.com/sb-forms-latest.js')-->
     </body>
 </html>
