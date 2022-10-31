@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AllPairShortestPath.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.path</a> &gt; <span class="el_source">AllPairShortestPath.java</span></div><h1>AllPairShortestPath.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.path;
+
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.pregel.ComputeFunction;
+import org.apache.flink.graph.pregel.MessageCombiner;
+import org.apache.flink.graph.pregel.MessageIterator;
+import org.apache.flink.graph.pregel.VertexCentricConfiguration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.*;
+
+/**
+ * The AllPairShortestPath computes the shortest path distance between every two vertices for the
+ * input graph.
+ *
+ * &lt;p&gt;This code implements the algorithm in
+ * https://www.dcs.bbk.ac.uk/~DELL/teaching/cc/dell_cc_10.pdf. &lt;br&gt;
+ *
+ * &lt;p&gt;We recommend that the input graph should be a simple, directed graph containing no duplicate
+ * edges or self-loops.
+ */
+<span class="fc" id="L29">public class AllPairShortestPath</span>
+    implements GraphAlgorithm&lt;
+        Long, Long, Double, DataSet&lt;Vertex&lt;Long, Map&lt;Long, Double&gt;&gt;&gt;&gt; {
+
+<span class="fc" id="L33">  private int maxIterations = Integer.MAX_VALUE;</span>
+
+  public void setMaxIterations(int maxIterations) {
+<span class="fc" id="L36">	this.maxIterations = maxIterations;</span>
+<span class="fc" id="L37">  }</span>
+
+  /**
+   * The vertex value maintains a mapping relation from dist_id to the corresponding shortest path distance.
+   */
+  @Override
+  public DataSet&lt;Vertex&lt;Long, Map&lt;Long, Double&gt;&gt;&gt; run(Graph&lt;Long, Long, Double&gt; graph)
+      throws Exception {
+<span class="fc" id="L45">    VertexCentricConfiguration parameters = new VertexCentricConfiguration();</span>
+<span class="fc" id="L46">    parameters.addBroadcastSet(&quot;allVertices&quot;, graph.getVertexIds());</span>
+<span class="fc" id="L47">    return graph.mapVertices(new InitVertices())</span>
+<span class="fc" id="L48">        .runVertexCentricIteration(</span>
+            new APSPComputeFunction(), new APSPCombiner(), maxIterations, parameters)
+<span class="fc" id="L50">        .getVertices();</span>
+  }
+
+<span class="fc" id="L53">  public static final class InitVertices implements MapFunction&lt;Vertex&lt;Long, Long&gt;, Map&lt;Long, Double&gt;&gt; {</span>
+    public Map&lt;Long, Double&gt; map(Vertex&lt;Long, Long&gt; vertex) {
+<span class="fc" id="L55">      return new HashMap&lt;&gt;();</span>
+    }
+  }
+
+  /** The compute function for APSPComputation. */
+<span class="fc" id="L60">  public static final class APSPComputeFunction</span>
+      extends ComputeFunction&lt;Long, Map&lt;Long, Double&gt;, Double, Tuple3&lt;Long, Long, Double&gt;&gt; {
+
+    @Override
+    public void compute(
+        Vertex&lt;Long, Map&lt;Long, Double&gt;&gt; vertex,
+        MessageIterator&lt;Tuple3&lt;Long, Long, Double&gt;&gt; messages) {
+<span class="fc" id="L67">      Collection&lt;Long&gt; vertices = getBroadcastSet(&quot;allVertices&quot;);</span>
+<span class="fc" id="L68">      Map&lt;Long, Double&gt; curMap = vertex.getValue();</span>
+
+<span class="fc bfc" id="L70" title="All 2 branches covered.">      if (getSuperstepNumber() == 1) {</span>
+<span class="fc" id="L71">        Iterable&lt;Edge&lt;Long, Double&gt;&gt; edges = getEdges();</span>
+        // edges can only be iterated once
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (Edge&lt;Long, Double&gt; e : edges) {</span>
+<span class="fc" id="L74">          curMap.put(e.getTarget(), e.getValue());</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">          for (Long vertexId : vertices) {</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (vertex.getId().equals(vertexId)) continue;</span>
+<span class="fc" id="L77">            sendMessageTo(vertexId, new Tuple3&lt;&gt;(e.getSource(), e.getTarget(), e.getValue()));</span>
+<span class="fc" id="L78">          }</span>
+<span class="fc" id="L79">        }</span>
+<span class="fc" id="L80">        setNewVertexValue(curMap);</span>
+<span class="fc" id="L81">        return;</span>
+      }
+
+<span class="fc bfc" id="L84" title="All 2 branches covered.">      for (Tuple3&lt;Long, Long, Double&gt; msg : messages) {</span>
+<span class="fc" id="L85">        boolean send = false;</span>
+<span class="fc" id="L86">        Double msgToSend = 0D;</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (curMap.containsKey(msg.f0)) {</span>
+<span class="fc" id="L88">          Double v = curMap.get(msg.f0);</span>
+<span class="fc" id="L89">          Double w = msg.f2;</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">          if (curMap.containsKey(msg.f1)) {</span>
+<span class="fc" id="L91">            Double u = curMap.get(msg.f1);</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            if (w + v &lt; u) {</span>
+<span class="fc" id="L93">              msgToSend = w + v;</span>
+<span class="fc" id="L94">              curMap.replace(msg.f1, msgToSend);</span>
+<span class="fc" id="L95">              send = true;</span>
+            }
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">          } else if (!vertex.getId().equals(msg.f1)) {</span>
+<span class="fc" id="L98">            msgToSend = w + v;</span>
+<span class="fc" id="L99">            curMap.put(msg.f1, msgToSend);</span>
+<span class="fc" id="L100">            send = true;</span>
+          }
+        }
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (send) {</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">          for (Long vertexId : vertices) {</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (vertexId.equals(vertex.getId())) continue;</span>
+<span class="fc" id="L106">            sendMessageTo(vertexId, new Tuple3&lt;&gt;(vertex.getId(), msg.f1, msgToSend));</span>
+<span class="fc" id="L107">          }</span>
+        }
+<span class="fc" id="L109">      }</span>
+<span class="fc" id="L110">      setNewVertexValue(curMap);</span>
+<span class="fc" id="L111">    }</span>
+  }
+
+<span class="fc" id="L114">  public static final class APSPCombiner extends MessageCombiner&lt;Long, Tuple3&lt;Long, Long, Double&gt;&gt; {</span>
+    @Override
+    public void combineMessages(MessageIterator&lt;Tuple3&lt;Long, Long, Double&gt;&gt; messageIterator) {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">      for (Tuple3&lt;Long, Long, Double&gt; msg : messageIterator) {</span>
+<span class="fc" id="L118">        sendCombinedMessage(msg);</span>
+<span class="fc" id="L119">      }</span>
+<span class="fc" id="L120">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

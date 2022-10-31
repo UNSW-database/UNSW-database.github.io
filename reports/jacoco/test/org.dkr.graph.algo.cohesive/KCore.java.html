@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KCore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.cohesive</a> &gt; <span class="el_source">KCore.java</span></div><h1>KCore.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.cohesive;
+
+import org.apache.flink.api.common.aggregators.LongSumAggregator;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.spargel.GatherFunction;
+import org.apache.flink.graph.spargel.MessageIterator;
+import org.apache.flink.graph.spargel.ScatterFunction;
+import org.apache.flink.graph.spargel.ScatterGatherConfiguration;
+import org.apache.flink.types.LongValue;
+
+import java.util.TreeMap;
+
+/**
+ * The class KCore computes the coreness of each vertex in the graph under K-Core model. The input
+ * graph must be an undirected graph.
+ *
+ * @param &lt;K&gt; ID type
+ * @param &lt;VV&gt; vertex value type
+ * @param &lt;EV&gt; edge value type
+ */
+<span class="fc" id="L26">public class KCore&lt;K, VV, EV&gt; implements GraphAlgorithm&lt;K, VV, EV, Graph&lt;K, Long, EV&gt;&gt; {</span>
+
+  // count the number of updated verities, stop if all vertices are not updated
+  private static final String UPDATE_VERTICES = &quot;updatedVertices&quot;;
+<span class="fc" id="L30">  private int maxIterations = Integer.MAX_VALUE;</span>
+
+  /** set the maximum iterations for the gelly */
+  public void setMaxIterations(int maxIterations) {
+<span class="fc" id="L34">    this.maxIterations = maxIterations;</span>
+<span class="fc" id="L35">  }</span>
+
+  /** get coreness of each vertex */
+  public Graph&lt;K, Long, EV&gt; run(Graph&lt;K, VV, EV&gt; inputGraph) {
+<span class="fc" id="L39">    DataSet&lt;Vertex&lt;K, Long&gt;&gt; vertices = inputGraph.getDegrees().map(new DegreeMap&lt;&gt;());</span>
+<span class="fc" id="L40">    Graph&lt;K, Long, EV&gt; graph =</span>
+<span class="fc" id="L41">        Graph.fromDataSet(vertices, inputGraph.getEdges(), inputGraph.getContext()).getUndirected();</span>
+<span class="fc" id="L42">    ScatterGatherConfiguration parameters = new ScatterGatherConfiguration();</span>
+<span class="fc" id="L43">    parameters.setName(&quot;KCoreParameters&quot;);</span>
+<span class="fc" id="L44">    parameters.registerAggregator(UPDATE_VERTICES, new LongSumAggregator());</span>
+<span class="fc" id="L45">    return graph.runScatterGatherIteration(</span>
+        new KCoreMessenger&lt;&gt;(), new KCoreUpdater&lt;&gt;(), maxIterations, parameters);
+  }
+
+  /** map the degree of each vertex into dataset */
+<span class="fc" id="L50">  public static final class DegreeMap&lt;K&gt;</span>
+      implements MapFunction&lt;Tuple2&lt;K, LongValue&gt;, Vertex&lt;K, Long&gt;&gt; {
+    public Vertex&lt;K, Long&gt; map(Tuple2&lt;K, LongValue&gt; t) {
+<span class="fc" id="L53">      return new Vertex&lt;&gt;(t.f0, t.f1.getValue());</span>
+    }
+  }
+
+  /** distributes the current coreness to neighbors */
+<span class="fc" id="L58">  public static final class KCoreMessenger&lt;K, EV&gt; extends ScatterFunction&lt;K, Long, Long, EV&gt; {</span>
+    public void sendMessages(Vertex&lt;K, Long&gt; vertex) {
+<span class="fc" id="L60">      LongValue sum = getPreviousIterationAggregate(UPDATE_VERTICES);</span>
+<span class="fc bfc" id="L61" title="All 4 branches covered.">      if (getSuperstepNumber() &gt; 1 &amp;&amp; sum.getValue() == 0) return;</span>
+<span class="fc" id="L62">      sendMessageToAllNeighbors(vertex.getValue());</span>
+<span class="fc" id="L63">    }</span>
+  }
+
+  /**
+   * update the coreness of a vertex by its neighbors i.e., find the largest k such that the number
+   * of neighbors with coreness &gt;= k is no less than k
+   */
+<span class="fc" id="L70">  public static final class KCoreUpdater&lt;K, EV&gt; extends GatherFunction&lt;K, Long, Long&gt; {</span>
+    public void updateVertex(Vertex&lt;K, Long&gt; vertex, MessageIterator&lt;Long&gt; inMessages) {
+<span class="fc" id="L72">      LongValue sum = getPreviousIterationAggregate(UPDATE_VERTICES);</span>
+<span class="pc bpc" id="L73" title="1 of 4 branches missed.">      if (getSuperstepNumber() &gt; 1 &amp;&amp; sum.getValue() == 0) return;</span>
+<span class="fc" id="L74">      Long oldCoreness = vertex.getValue();</span>
+<span class="fc" id="L75">      TreeMap&lt;Long, Long&gt; map = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">      for (Long msg : inMessages) {</span>
+<span class="fc" id="L77">        Long j = Long.min(msg, oldCoreness);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        map.compute(j, (k, v) -&gt; v == null ? 1 : v + 1);</span>
+<span class="fc" id="L79">      }</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">      Long newCoreness, last = map.size() == 0 ? 0L : map.lastKey();</span>
+<span class="fc" id="L81">      Long verticesNum = 0L;</span>
+<span class="fc" id="L82">      for (Long i = last; ; i--) {</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        if (map.containsKey(i)) verticesNum += map.get(i);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (verticesNum &gt;= i) {</span>
+<span class="fc" id="L85">          newCoreness = i;</span>
+<span class="fc" id="L86">          break;</span>
+        }
+      }
+<span class="fc bfc" id="L89" title="All 2 branches covered.">      if (newCoreness &lt; oldCoreness) {</span>
+<span class="fc" id="L90">        LongSumAggregator aggregator = getIterationAggregator(UPDATE_VERTICES);</span>
+<span class="fc" id="L91">        aggregator.aggregate(1);</span>
+      }
+<span class="fc" id="L93">      setNewVertexValue((long) newCoreness);</span>
+<span class="fc" id="L94">    }</span>
+  }
+
+  public int getMaxIterations() {
+<span class="fc" id="L98">    return maxIterations;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BFS.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.traversal</a> &gt; <span class="el_source">BFS.java</span></div><h1>BFS.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.traversal;
+
+import org.apache.flink.api.common.aggregators.LongSumAggregator;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.spargel.GatherFunction;
+import org.apache.flink.graph.spargel.MessageIterator;
+import org.apache.flink.graph.spargel.ScatterFunction;
+import org.apache.flink.graph.spargel.ScatterGatherConfiguration;
+import org.apache.flink.types.LongValue;
+
+/**
+ * The class BFS computes the BFS order of the vertices in the graph. The input graph can be neither
+ * a directed nor undirected graph, and the input must contain a beginVertex means the beginning
+ * vertex of BFS.
+ *
+ * @param &lt;K&gt; ID type
+ * @param &lt;VV&gt; vertex value type
+ * @param &lt;EV&gt; edge value type
+ * @param &lt;beginVertex&gt; beginning vertex of BFS
+ */
+<span class="fc" id="L25">public class BFS&lt;K, VV, EV&gt; implements GraphAlgorithm&lt;K, VV, EV, Graph&lt;K, Long, EV&gt;&gt; {</span>
+
+  // count the number of updated verities, stop if all vertices are not updated
+  private static final String updatedVertices = &quot;updatedVertices&quot;;
+<span class="fc" id="L29">  private int maxIterations = Integer.MAX_VALUE;</span>
+<span class="fc" id="L30">  private K beginVertex = null;</span>
+
+  /** set the maximum iterations for the gelly */
+  public void setMaxIterations(int maxIterations) {
+<span class="fc" id="L34">    this.maxIterations = maxIterations;</span>
+<span class="fc" id="L35">  }</span>
+
+  /** set the begin vertex of BFS */
+  public void setBeginVertex(K beginVertex) {
+<span class="fc" id="L39">    this.beginVertex = beginVertex;</span>
+<span class="fc" id="L40">  }</span>
+
+  /** get the bfs order for each vertex */
+  public Graph&lt;K, Long, EV&gt; run(Graph&lt;K, VV, EV&gt; graph) {
+<span class="fc" id="L44">    ScatterGatherConfiguration parameters = new ScatterGatherConfiguration();</span>
+<span class="fc" id="L45">    parameters.registerAggregator(updatedVertices, new LongSumAggregator());</span>
+<span class="fc" id="L46">    return graph</span>
+<span class="fc" id="L47">            .mapVertices(new InitialVertexValue&lt;&gt;(beginVertex))</span>
+<span class="fc" id="L48">            .runScatterGatherIteration(</span>
+                    new OrderMessenger(), new OrderUpdater(), maxIterations, parameters);
+  }
+
+  /** initially set each vertex value to 0, and value of beginVertex to 1 */
+  private static final class InitialVertexValue&lt;K, VV&gt; implements MapFunction&lt;Vertex&lt;K, VV&gt;, Long&gt; {
+
+<span class="fc" id="L55">    private K beginVertex = null;</span>
+
+<span class="fc" id="L57">    public InitialVertexValue(K beginVertex) {</span>
+<span class="fc" id="L58">      this.beginVertex = beginVertex;</span>
+<span class="fc" id="L59">    }</span>
+
+    @Override
+    public Long map(Vertex&lt;K, VV&gt; vertex) {
+<span class="fc bfc" id="L63" title="All 2 branches covered.">      if (vertex.getId().equals(beginVertex)) return 1L;</span>
+<span class="fc" id="L64">      return 0L;</span>
+    }
+  }
+
+  /** if the vertex has been traversed (value &gt; 0), then update its neighbor by value+1 */
+<span class="fc" id="L69">  public static final class OrderMessenger&lt;K, EV&gt; extends ScatterFunction&lt;K, Long, Long, EV&gt; {</span>
+    public void sendMessages(Vertex&lt;K, Long&gt; vertex) {
+<span class="fc" id="L71">      LongValue sum = getPreviousIterationAggregate(updatedVertices);</span>
+<span class="pc bpc" id="L72" title="1 of 4 branches missed.">      if (getSuperstepNumber() &gt; 1 &amp;&amp; sum.getValue() == 0) return;</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">      if (vertex.getValue() &gt; 0) {</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        for (Edge&lt;K, EV&gt; edge : getEdges()) {</span>
+<span class="fc" id="L75">          sendMessageTo(edge.getTarget(), vertex.getValue() + 1L);</span>
+<span class="fc" id="L76">        }</span>
+      }
+<span class="fc" id="L78">    }</span>
+  }
+
+  /** if the vertex has not been traversed (value = 0), then try to update its value */
+<span class="fc" id="L82">  public static final class OrderUpdater&lt;K, EV&gt; extends GatherFunction&lt;K, Long, Long&gt; {</span>
+    public void updateVertex(Vertex&lt;K, Long&gt; vertex, MessageIterator&lt;Long&gt; inMessages) {
+<span class="fc" id="L84">      LongValue sum = getPreviousIterationAggregate(updatedVertices);</span>
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">      if (getSuperstepNumber() &gt; 1 &amp;&amp; sum.getValue() == 0) return;</span>
+<span class="fc" id="L86">      Long minDistance = Long.MAX_VALUE;</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">      for (Long msg : inMessages) {</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (msg &lt; minDistance) {</span>
+<span class="fc" id="L89">          minDistance = msg;</span>
+        }
+<span class="fc" id="L91">      }</span>
+<span class="pc bpc" id="L92" title="1 of 4 branches missed.">      if (minDistance &lt; vertex.getValue() || vertex.getValue() == 0) {</span>
+<span class="fc" id="L93">        setNewVertexValue(minDistance);</span>
+<span class="fc" id="L94">        LongSumAggregator aggregator = getIterationAggregator(updatedVertices);</span>
+<span class="fc" id="L95">        aggregator.aggregate(1);</span>
+      }
+<span class="fc" id="L97">    }</span>
+  }
+
+  public int getMaxIterations() {
+<span class="fc" id="L101">    return maxIterations;</span>
+  }
+
+  public K getBeginVertex() {
+<span class="fc" id="L105">    return beginVertex;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Louvain.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.community</a> &gt; <span class="el_source">Louvain.java</span></div><h1>Louvain.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.community;
+
+import org.apache.flink.api.common.aggregators.DoubleSumAggregator;
+import org.apache.flink.api.common.aggregators.LongSumAggregator;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.spargel.GatherFunction;
+import org.apache.flink.graph.spargel.MessageIterator;
+import org.apache.flink.graph.spargel.ScatterFunction;
+import org.apache.flink.graph.spargel.ScatterGatherConfiguration;
+import org.apache.flink.types.DoubleValue;
+import org.apache.flink.types.LongValue;
+
+/**
+ * The class Louvain compute the community id of each vertex by greedily optimizing the modularity
+ * of communities. The input graph must be a weighted graph with both vertex and edge weight, and
+ * the weight use type Double to store.
+ *
+ * @param &lt;K&gt; ID type
+ */
+<span class="fc" id="L26">public class Louvain&lt;K&gt; implements GraphAlgorithm&lt;K, Double, Double, DataSet&lt;Vertex&lt;K, Long&gt;&gt;&gt; {</span>
+
+<span class="fc" id="L28">  private int maxIterations = Integer.MAX_VALUE;</span>
+<span class="fc" id="L29">  private int numOfCommunities = 1;</span>
+
+  /**
+   * aggregators for edge weight, vertex weight in each community, and the number of updated
+   * vertices
+   */
+  private static String getEdgeWeightAgg(int commID) {
+<span class="fc" id="L36">    return &quot;edgeWeight&quot; + commID;</span>
+  }
+
+  private static String getVertexWeightAgg(int commID) {
+<span class="fc" id="L40">    return &quot;vertexWeight&quot; + commID;</span>
+  }
+
+  private static String getSumAgg() {
+<span class="fc" id="L44">    return &quot;sumAggregator&quot;;</span>
+  }
+
+  /** set the maximum iterations for the gelly */
+  public void setMaxIterations(int maxIterations) {
+<span class="fc" id="L49">    this.maxIterations = maxIterations;</span>
+<span class="fc" id="L50">  }</span>
+
+  /** set the number of communities */
+  public void setNumOfCommunities(int numOfCommunities) {
+<span class="fc" id="L54">    this.numOfCommunities = numOfCommunities;</span>
+<span class="fc" id="L55">  }</span>
+
+  /** get the community id of each vertex such that the Modularity is minimized */
+  public DataSet&lt;Vertex&lt;K, Long&gt;&gt; run(Graph&lt;K, Double, Double&gt; inputGraph) throws Exception {
+<span class="fc" id="L59">    long m = inputGraph.numberOfEdges() * 2;</span>
+<span class="fc" id="L60">    Graph&lt;K, Tuple2&lt;Long, Double&gt;, Double&gt; graph =</span>
+<span class="fc" id="L61">        inputGraph.getUndirected().mapVertices(new InitialVertexMapper(numOfCommunities));</span>
+<span class="fc" id="L62">    ScatterGatherConfiguration parameters = new ScatterGatherConfiguration();</span>
+<span class="fc" id="L63">    parameters.registerAggregator(getSumAgg(), new LongSumAggregator());</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">    for (int cID = 0; cID &lt; numOfCommunities; cID++) {</span>
+<span class="fc" id="L65">      parameters.registerAggregator(getEdgeWeightAgg(cID), new DoubleSumAggregator());</span>
+<span class="fc" id="L66">      parameters.registerAggregator(getVertexWeightAgg(cID), new DoubleSumAggregator());</span>
+    }
+<span class="fc" id="L68">    return graph</span>
+<span class="fc" id="L69">        .runScatterGatherIteration(</span>
+            new LouvainMessenger(),
+            new LouvainUpdater(m, numOfCommunities),
+            maxIterations,
+            parameters)
+<span class="fc" id="L74">        .mapVertices(new OutputVertexMapper())</span>
+<span class="fc" id="L75">        .getVertices();</span>
+  }
+
+  /** initial the vertex to (communityId, vertexWeight) */
+  public static final class InitialVertexMapper&lt;K&gt;
+      implements MapFunction&lt;Vertex&lt;K, Double&gt;, Tuple2&lt;Long, Double&gt;&gt; {
+    private final int numOfCommunities;
+    private Long cId;
+
+<span class="fc" id="L84">    public InitialVertexMapper(int numOfCommunities) {</span>
+<span class="fc" id="L85">      this.numOfCommunities = numOfCommunities;</span>
+<span class="fc" id="L86">      this.cId = 0L;</span>
+<span class="fc" id="L87">    }</span>
+
+    public Tuple2&lt;Long, Double&gt; map(Vertex&lt;K, Double&gt; v) {
+<span class="fc" id="L90">      cId = (cId + 1) % numOfCommunities;</span>
+<span class="fc" id="L91">      return new Tuple2&lt;&gt;(cId, v.f1);</span>
+    }
+  }
+
+  /** return the communityIe as the value of vertex */
+<span class="fc" id="L96">  public static final class OutputVertexMapper&lt;K&gt;</span>
+      implements MapFunction&lt;Vertex&lt;K, Tuple2&lt;Long, Double&gt;&gt;, Long&gt; {
+    public Long map(Vertex&lt;K, Tuple2&lt;Long, Double&gt;&gt; v) {
+<span class="fc" id="L99">      return v.f1.f0;</span>
+    }
+  }
+
+  /** distributes the commID and edge weight to neighbors */
+<span class="fc" id="L104">  public static final class LouvainMessenger&lt;K&gt;</span>
+      extends ScatterFunction&lt;K, Tuple2&lt;Long, Double&gt;, Tuple2&lt;Long, Double&gt;, Double&gt; {
+    public void sendMessages(Vertex&lt;K, Tuple2&lt;Long, Double&gt;&gt; vertex) {
+<span class="fc" id="L107">      LongValue pv = getPreviousIterationAggregate(getSumAgg());</span>
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">      if (getSuperstepNumber() &gt; 2 &amp;&amp; pv.getValue() == 0) return;</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">      for (Edge&lt;K, Double&gt; e : getEdges())</span>
+<span class="fc" id="L110">        sendMessageTo(e.getTarget(), new Tuple2&lt;&gt;(vertex.f1.f0, e.f2));</span>
+<span class="fc" id="L111">    }</span>
+  }
+
+  /** update the community ID of every vertex to the one that maximize the gain of modularity */
+  public static final class LouvainUpdater&lt;K&gt;
+      extends GatherFunction&lt;K, Tuple2&lt;Long, Double&gt;, Tuple2&lt;Long, Double&gt;&gt; {
+    private final long m;
+    private final int numOfCommunities;
+
+<span class="fc" id="L120">    public LouvainUpdater(long m, int numOfCommunities) {</span>
+<span class="fc" id="L121">      this.m = m;</span>
+<span class="fc" id="L122">      this.numOfCommunities = numOfCommunities;</span>
+<span class="fc" id="L123">    }</span>
+
+    public void updateVertex(
+        Vertex&lt;K, Tuple2&lt;Long, Double&gt;&gt; vertex, MessageIterator&lt;Tuple2&lt;Long, Double&gt;&gt; inMessages) {
+<span class="fc" id="L127">      LongValue pv = getPreviousIterationAggregate(getSumAgg());</span>
+<span class="pc bpc" id="L128" title="1 of 4 branches missed.">      if (getSuperstepNumber() &gt; 2 &amp;&amp; pv.getValue() == 0) return;</span>
+<span class="fc" id="L129">      int oldCommID = vertex.getValue().f0.intValue();</span>
+<span class="fc" id="L130">      double ki = 0.0;</span>
+<span class="fc" id="L131">      double[] inEdgeWeight = new double[(int) numOfCommunities];</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">      for (Tuple2&lt;Long, Double&gt; msg : inMessages) {</span>
+<span class="fc" id="L133">        ki += msg.f1;</span>
+<span class="fc" id="L134">        inEdgeWeight[msg.f0.intValue()] += msg.f1;</span>
+<span class="fc" id="L135">      }</span>
+<span class="fc" id="L136">      DoubleSumAggregator eAgg = getIterationAggregator(getEdgeWeightAgg(oldCommID));</span>
+<span class="fc" id="L137">      eAgg.aggregate(inEdgeWeight[oldCommID]);</span>
+<span class="fc" id="L138">      DoubleSumAggregator vAgg = getIterationAggregator(getVertexWeightAgg(oldCommID));</span>
+<span class="fc" id="L139">      vAgg.aggregate(vertex.getValue().f1);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">      if (getSuperstepNumber() == 1) {</span>
+<span class="fc" id="L141">        setNewVertexValue(new Tuple2&lt;&gt;(vertex.f1.f0, vertex.f1.f1));</span>
+      } else {
+<span class="fc" id="L143">        double deltaQ = 0;</span>
+<span class="fc" id="L144">        int newCommID = -1;</span>
+<span class="fc" id="L145">        double m2 = m;</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        for (int cID = 0; cID &lt; numOfCommunities; cID++) {</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">          if (cID == oldCommID) continue;</span>
+<span class="fc" id="L148">          DoubleValue sigmaInValue = getPreviousIterationAggregate(getEdgeWeightAgg(cID));</span>
+<span class="fc" id="L149">          double sigmaIn = sigmaInValue.getValue() / 2.0;</span>
+<span class="fc" id="L150">          DoubleValue sigmaTotValue = getPreviousIterationAggregate(getVertexWeightAgg(cID));</span>
+<span class="fc" id="L151">          double sigmaTot = sigmaTotValue.getValue();</span>
+<span class="fc" id="L152">          double tt = (sigmaTot + ki) / m2;</span>
+<span class="fc" id="L153">          double term1 = ((sigmaIn + 2. * inEdgeWeight[cID]) / m2 - tt * tt);</span>
+<span class="fc" id="L154">          double aa = sigmaTot / m2;</span>
+<span class="fc" id="L155">          double bb = ki / m2;</span>
+<span class="fc" id="L156">          double term2 = (sigmaIn / m2 - aa * aa - bb * bb);</span>
+<span class="fc" id="L157">          double deltaQ_temp = term1 - term2;</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">          if (deltaQ_temp &gt; deltaQ) {</span>
+<span class="fc" id="L159">            deltaQ = deltaQ_temp;</span>
+<span class="fc" id="L160">            newCommID = cID;</span>
+          }
+        }
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (newCommID == -1) {</span>
+<span class="fc" id="L164">          setNewVertexValue(new Tuple2&lt;&gt;((long) oldCommID, vertex.f1.f1));</span>
+        } else {
+<span class="fc" id="L166">          setNewVertexValue(new Tuple2&lt;&gt;((long) newCommID, vertex.f1.f1));</span>
+<span class="fc" id="L167">          LongSumAggregator aggregator = getIterationAggregator(getSumAgg());</span>
+<span class="fc" id="L168">          aggregator.aggregate(1);</span>
+        }
+      }
+<span class="fc" id="L171">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

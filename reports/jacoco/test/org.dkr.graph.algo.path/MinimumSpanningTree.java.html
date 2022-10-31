@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MinimumSpanningTree.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.path</a> &gt; <span class="el_source">MinimumSpanningTree.java</span></div><h1>MinimumSpanningTree.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.path;
+
+import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.tuple.Tuple4;
+import org.apache.flink.api.java.tuple.Tuple5;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.spargel.GatherFunction;
+import org.apache.flink.graph.spargel.MessageIterator;
+import org.apache.flink.graph.spargel.ScatterFunction;
+import org.apache.flink.graph.spargel.ScatterGatherConfiguration;
+import org.apache.flink.util.Collector;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
+/** This algorithm find a minimum spanning tree of a graph with a naive method. */
+<span class="fc" id="L24">public class MinimumSpanningTree&lt;VV&gt;</span>
+    implements GraphAlgorithm&lt;Long, VV, Double, DataSet&lt;Edge&lt;Long, Double&gt;&gt;&gt; {
+
+<span class="fc" id="L27">  private int maxIterations = Integer.MAX_VALUE;</span>
+
+  public void setMaxIterations(int maxIterations) {
+<span class="fc" id="L30">	this.maxIterations = maxIterations;</span>
+<span class="fc" id="L31">  }</span>
+
+  /**
+   * 1. Each vertex finds a shortest edge that connects to other groups and save it.
+   *
+   * &lt;p&gt;2. If the selected edge is same as the received edge(i.e., a pair of vertices selected each
+   * other), retain this edge.
+   *
+   * &lt;p&gt;3. There may exist more than one edges from a group. So broadcast the edge to the group and
+   * retain the minimum edge. Note if all edges retained, MSTUpdater will have no change and stop.
+   * So execute an extra blank operation to keep activity.
+   *
+   * &lt;p&gt;4. Add the selected edge to MST.
+   *
+   * &lt;p&gt;5. Grouping. Broadcast the selected edge and let all vertices know which group it will be
+   * merged in.
+   *
+   * &lt;p&gt;6. Broadcast the merging information and update the group in each vertex.
+   *
+   * &lt;p&gt;7. Change the belonging group ID.
+   *
+   * &lt;p&gt;Repeat. The function will end if there is no change(no edge selected in step 1).
+   */
+  public DataSet&lt;Edge&lt;Long, Double&gt;&gt; run(Graph&lt;Long, VV, Double&gt; oriGraph) throws Exception {
+<span class="fc" id="L55">    Graph&lt;Long, VertexValue, Double&gt; graph = oriGraph.mapVertices(new InitialVertexValue());</span>
+
+<span class="fc" id="L57">	ScatterGatherConfiguration parameters = new ScatterGatherConfiguration();</span>
+<span class="fc" id="L58">	parameters.addBroadcastSetForScatterFunction(&quot;allVertices&quot;, graph.getVertexIds());</span>
+<span class="fc" id="L59">    return graph</span>
+<span class="fc" id="L60">        .runScatterGatherIteration(new MSTMessenger(), new MSTUpdater(), maxIterations, parameters)</span>
+<span class="fc" id="L61">        .getVertices()</span>
+<span class="fc" id="L62">        .flatMap(new EdgeFlatMap());</span>
+  }
+
+  /**
+   * VertexValue is the type of vertex value saved in each vertex.
+   *
+   * &lt;p&gt;1. Belonging Group ID 2. Group Vertices 3. MST Edges 4. Selected edge in this iteration
+   */
+  public static class VertexValue
+      extends Tuple4&lt;
+          Long,
+          ArrayList&lt;Long&gt;,
+          ArrayList&lt;Edge&lt;Long, Double&gt;&gt;,
+          Tuple5&lt;Long, Long, Double, Long, Long&gt;&gt; {
+    public VertexValue() {
+<span class="fc" id="L77">      super(-1L, new ArrayList&lt;&gt;(), new ArrayList&lt;&gt;(), new Tuple5&lt;&gt;(-1L, -1L, 0D, -1L, -1L));</span>
+<span class="fc" id="L78">    }</span>
+  }
+
+  /** Each vertex has a unique ID initially. */
+  private static final class InitialVertexValue&lt;VV&gt;
+      implements MapFunction&lt;Vertex&lt;Long, VV&gt;, VertexValue&gt; {
+    public VertexValue map(Vertex&lt;Long, VV&gt; vertex) {
+<span class="fc" id="L85">      VertexValue vv = new VertexValue();</span>
+<span class="fc" id="L86">      vv.f0 = vertex.f0;</span>
+<span class="fc" id="L87">      vv.f1.add(vertex.f0);</span>
+<span class="fc" id="L88">      return vv;</span>
+    }
+  }
+
+  /** Collect edges to form a MST. */
+<span class="fc" id="L93">  public static final class EdgeFlatMap</span>
+      implements FlatMapFunction&lt;Vertex&lt;Long, VertexValue&gt;, Edge&lt;Long, Double&gt;&gt; {
+    @Override
+    public void flatMap(Vertex&lt;Long, VertexValue&gt; vertex, Collector&lt;Edge&lt;Long, Double&gt;&gt; collector) {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">      for (Edge&lt;Long, Double&gt; edge : vertex.getValue().f2) {</span>
+<span class="fc" id="L98">        collector.collect(edge);</span>
+<span class="fc" id="L99">      }</span>
+<span class="fc" id="L100">    }</span>
+  }
+
+  private static final class MSTMessenger
+      extends ScatterFunction&lt;Long, VertexValue, Tuple5&lt;Long, Long, Double, Long, Long&gt;, Double&gt; {
+    public void sendMessages(Vertex&lt;Long, VertexValue&gt; vertex) {
+<span class="fc" id="L106">      Collection&lt;Long&gt; vertices = getBroadcastSet(&quot;allVertices&quot;);</span>
+
+<span class="fc bfc" id="L108" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 1) {</span>
+<span class="fc" id="L109">        Map&lt;Long, Long&gt; inGroup = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        for (Long u : vertex.f1.f1) {</span>
+<span class="fc" id="L111">          inGroup.put(u, 1L);</span>
+<span class="fc" id="L112">        }</span>
+<span class="fc" id="L113">        Tuple5&lt;Long, Long, Double, Long, Long&gt; selectedEdge =</span>
+<span class="fc" id="L114">            new Tuple5&lt;&gt;(-1L, -1L, Double.MAX_VALUE, -1L, -1L);</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        for (Edge&lt;Long, Double&gt; edge : getEdges()) {</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">          if (inGroup.containsKey(edge.getTarget())) {</span>
+<span class="fc" id="L117">            continue;</span>
+          }
+<span class="fc bfc" id="L119" title="All 2 branches covered.">          if (selectedEdge.f0 == -1</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">              || edge.getValue() &lt; selectedEdge.f2</span>
+<span class="pc bpc" id="L121" title="1 of 4 branches missed.">              || (edge.getValue().equals(selectedEdge.f2) &amp;&amp; edge.getTarget() &lt; selectedEdge.f1)) {</span>
+<span class="fc" id="L122">            selectedEdge.f0 = edge.getSource();</span>
+<span class="fc" id="L123">            selectedEdge.f1 = edge.getTarget();</span>
+<span class="fc" id="L124">            selectedEdge.f2 = edge.getValue();</span>
+<span class="fc" id="L125">            selectedEdge.f3 = vertex.f1.f0;</span>
+<span class="fc" id="L126">            selectedEdge.f4 = -1L;</span>
+          }
+<span class="fc" id="L128">        }</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (selectedEdge.f0 == -1L) {</span>
+<span class="fc" id="L130">          return;</span>
+        }
+<span class="fc" id="L132">        sendMessageTo(vertex.f0, selectedEdge);</span>
+      }
+
+<span class="fc bfc" id="L135" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 2) {</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        for (Long vertexId : vertices) {</span>
+<span class="fc" id="L137">          sendMessageTo(vertexId, vertex.getValue().f3);</span>
+<span class="fc" id="L138">        }</span>
+      }
+
+<span class="fc bfc" id="L141" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 3) {</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        for (Long vertexId : vertices) {</span>
+<span class="fc" id="L143">          sendMessageTo(vertexId, vertex.getValue().f3);</span>
+<span class="fc" id="L144">        }</span>
+      }
+
+<span class="fc bfc" id="L147" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 4) {</span>
+<span class="fc" id="L148">        Tuple5&lt;Long, Long, Double, Long, Long&gt; selectedEdge = vertex.getValue().f3;</span>
+<span class="fc bfc" id="L149" title="All 4 branches covered.">        if (selectedEdge.f0 == -1 || selectedEdge.f0 &gt; selectedEdge.f1) {</span>
+<span class="fc" id="L150">          sendMessageTo(vertex.getId(), new Tuple5&lt;&gt;(-1L, -1L, 0D, -1L, -1L));</span>
+        } else {
+<span class="fc" id="L152">          sendMessageTo(vertex.getId(), selectedEdge);</span>
+        }
+      }
+
+<span class="fc bfc" id="L156" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 5) {</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        for (Long vertexId : vertices) {</span>
+<span class="fc" id="L158">          sendMessageTo(vertexId, vertex.getValue().f3);</span>
+<span class="fc" id="L159">        }</span>
+      }
+
+<span class="fc bfc" id="L162" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 6) {</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        for (Long vertexId : vertices) {</span>
+<span class="fc" id="L164">          sendMessageTo(vertexId, vertex.getValue().f3);</span>
+<span class="fc" id="L165">        }</span>
+      }
+
+<span class="fc bfc" id="L168" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 0) {</span>
+<span class="fc" id="L169">        sendMessageTo(vertex.getId(), vertex.getValue().f3);</span>
+      }
+<span class="fc" id="L171">    }</span>
+  }
+
+  private static final class MSTUpdater
+      extends GatherFunction&lt;Long, VertexValue, Tuple5&lt;Long, Long, Double, Long, Long&gt;&gt; {
+    public void updateVertex(
+        Vertex&lt;Long, VertexValue&gt; vertex,
+        MessageIterator&lt;Tuple5&lt;Long, Long, Double, Long, Long&gt;&gt; inMessages) {
+<span class="fc bfc" id="L179" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 1) {</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">        for (Tuple5&lt;Long, Long, Double, Long, Long&gt; msg : inMessages) {</span>
+<span class="fc" id="L181">          VertexValue oldValue = vertex.getValue();</span>
+<span class="fc" id="L182">          oldValue.f3 = msg;</span>
+<span class="fc" id="L183">          setNewVertexValue(oldValue);</span>
+<span class="fc" id="L184">          return;</span>
+        }
+      }
+
+<span class="fc bfc" id="L188" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 2) {</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        for (Tuple5&lt;Long, Long, Double, Long, Long&gt; msg : inMessages) {</span>
+<span class="fc bfc" id="L190" title="All 4 branches covered.">          if (msg.f1 == vertex.getValue().f3.f0 &amp;&amp; msg.f0 == vertex.getValue().f3.f1) {</span>
+<span class="fc" id="L191">            VertexValue oldValue = vertex.getValue();</span>
+<span class="fc" id="L192">            oldValue.f3.f4 = msg.f3;</span>
+<span class="fc" id="L193">            setNewVertexValue(oldValue);</span>
+<span class="fc" id="L194">            return;</span>
+          }
+<span class="fc" id="L196">        }</span>
+<span class="fc" id="L197">        VertexValue oldValue = vertex.getValue();</span>
+<span class="fc" id="L198">        oldValue.f3 = new Tuple5&lt;&gt;(-1L, -1L, 0D, -1L, -1L);</span>
+<span class="fc" id="L199">        setNewVertexValue(oldValue);</span>
+      }
+
+<span class="fc bfc" id="L202" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 3) {</span>
+<span class="fc" id="L203">        VertexValue oldValue = vertex.getValue();</span>
+        // used to keep active
+<span class="fc" id="L205">        oldValue.f0 *= 10;</span>
+
+<span class="fc" id="L207">        Tuple5&lt;Long, Long, Double, Long, Long&gt; selectedEdge = vertex.getValue().f3;</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        for (Tuple5&lt;Long, Long, Double, Long, Long&gt; msg : inMessages) {</span>
+<span class="pc bpc" id="L209" title="1 of 4 branches missed.">          if (msg.f3 == selectedEdge.f3 &amp;&amp; msg.f4 == selectedEdge.f4) {</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">            if (msg.f2 &lt; selectedEdge.f2</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">                || msg.f2.equals(selectedEdge.f2)</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                    &amp;&amp; Math.min(msg.f0, msg.f1) &lt; Math.min(selectedEdge.f0, selectedEdge.f1)) {</span>
+<span class="fc" id="L213">              oldValue.f3 = new Tuple5&lt;&gt;(-1L, -1L, 0D, -1L, -1L);</span>
+<span class="fc" id="L214">              setNewVertexValue(oldValue);</span>
+<span class="fc" id="L215">              return;</span>
+            }
+          }
+<span class="fc" id="L218">        }</span>
+<span class="fc" id="L219">        setNewVertexValue(oldValue);</span>
+      }
+
+<span class="fc bfc" id="L222" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 4) {</span>
+<span class="fc" id="L223">        VertexValue oldValue = vertex.getValue();</span>
+        // used to keep active
+<span class="fc" id="L225">        oldValue.f0 /= 10;</span>
+
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">        for (Tuple5&lt;Long, Long, Double, Long, Long&gt; msg : inMessages) {</span>
+<span class="fc" id="L228">          oldValue.f3 = msg;</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">          if (msg.f0 &lt; msg.f1) {</span>
+<span class="fc" id="L230">            oldValue.f2.add(new Edge&lt;&gt;(msg.f0, msg.f1, msg.f2));</span>
+          }
+<span class="fc" id="L232">          setNewVertexValue(oldValue);</span>
+<span class="fc" id="L233">          return;</span>
+        }
+      }
+
+<span class="fc bfc" id="L237" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 5) {</span>
+<span class="fc" id="L238">        VertexValue oldValue = vertex.getValue();</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        for (Tuple5&lt;Long, Long, Double, Long, Long&gt; msg : inMessages) {</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">          if (msg.f4 == vertex.getValue().f0) {</span>
+<span class="fc" id="L241">            oldValue.f3 = new Tuple5&lt;&gt;(-1L, -1L, 0D, -1L, -1L);</span>
+<span class="fc" id="L242">            oldValue.f3.f0 = vertex.f0;</span>
+<span class="fc" id="L243">            oldValue.f3.f3 = msg.f4;</span>
+<span class="fc" id="L244">            oldValue.f3.f4 = msg.f3;</span>
+<span class="fc" id="L245">            setNewVertexValue(oldValue);</span>
+<span class="fc" id="L246">            return;</span>
+          }
+<span class="fc bfc" id="L248" title="All 2 branches covered.">          if (msg.f3 == vertex.getValue().f0) {</span>
+<span class="fc" id="L249">            oldValue.f3 = new Tuple5&lt;&gt;(-1L, -1L, 0D, -1L, -1L);</span>
+<span class="fc" id="L250">            oldValue.f3.f0 = vertex.f0;</span>
+<span class="fc" id="L251">            oldValue.f3.f3 = msg.f3;</span>
+<span class="fc" id="L252">            oldValue.f3.f4 = msg.f4;</span>
+<span class="fc" id="L253">            setNewVertexValue(oldValue);</span>
+<span class="fc" id="L254">            return;</span>
+          }
+<span class="fc" id="L256">        }</span>
+      }
+
+<span class="fc bfc" id="L259" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 6) {</span>
+<span class="fc" id="L260">        VertexValue oldValue = vertex.getValue();</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        for (Tuple5&lt;Long, Long, Double, Long, Long&gt; msg : inMessages) {</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">          if (vertex.f1.f0 == msg.f4) {</span>
+<span class="fc" id="L263">            oldValue.f1.add(msg.f0);</span>
+          }
+<span class="fc" id="L265">        }</span>
+<span class="fc" id="L266">        setNewVertexValue(oldValue);</span>
+      }
+
+<span class="fc bfc" id="L269" title="All 2 branches covered.">      if (getSuperstepNumber() % 7 == 0) {</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">        for (Tuple5&lt;Long, Long, Double, Long, Long&gt; msg : inMessages) {</span>
+<span class="fc" id="L271">          VertexValue oldValue = vertex.getValue();</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">          if (oldValue.f3.f3 &gt; oldValue.f3.f4) {</span>
+<span class="fc" id="L273">            oldValue.f0 = oldValue.f3.f4;</span>
+          }
+<span class="fc" id="L275">          oldValue.f3 = new Tuple5&lt;&gt;(-1L, -1L, 0D, -1L, -1L);</span>
+<span class="fc" id="L276">          setNewVertexValue(oldValue);</span>
+<span class="fc" id="L277">          return;</span>
+        }
+      }
+<span class="fc" id="L280">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaximalClique.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.cohesive</a> &gt; <span class="el_source">MaximalClique.java</span></div><h1>MaximalClique.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.cohesive;
+
+import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.spargel.GatherFunction;
+import org.apache.flink.graph.spargel.MessageIterator;
+import org.apache.flink.graph.spargel.ScatterFunction;
+import org.apache.flink.util.Collector;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.TreeSet;
+
+/**
+ * The class MaximalClique enumerate all maximal clique in the graph. The input graph must be an
+ * undirected graph. The ID type of the input graph must Long. The output of the class is a dataset
+ * of the lists which contains all id of vertices in each clique The input graph must be an
+ * undirected graph.
+ *
+ * @param &lt;VV&gt; vertex value type
+ * @param &lt;EV&gt; edge value type
+ */
+<span class="fc" id="L31">public class MaximalClique&lt;VV, EV&gt; implements GraphAlgorithm&lt;Long, VV, EV, DataSet&lt;List&lt;Long&gt;&gt;&gt; {</span>
+
+  /** get the list of maximal cliques */
+  public DataSet&lt;List&lt;Long&gt;&gt; run(Graph&lt;Long, VV, EV&gt; inputGraph) {
+<span class="fc" id="L35">    DataSet&lt;Vertex&lt;Long, List&lt;List&lt;Long&gt;&gt;&gt;&gt; vertices =</span>
+<span class="fc" id="L36">        inputGraph.getVertices().map(new VertexMap&lt;&gt;());</span>
+<span class="fc" id="L37">    Graph&lt;Long, List&lt;List&lt;Long&gt;&gt;, EV&gt; graph =</span>
+<span class="fc" id="L38">        Graph.fromDataSet(vertices, inputGraph.getEdges(), inputGraph.getContext()).getUndirected();</span>
+<span class="fc" id="L39">    return graph</span>
+<span class="fc" id="L40">        .runScatterGatherIteration(new CliqueMessager(), new CliqueUpdater(), 1)</span>
+<span class="fc" id="L41">        .getVertices()</span>
+<span class="fc" id="L42">        .flatMap(new CliqueFlatMap());</span>
+  }
+
+  /** distributes the adjacency list to neighbors */
+<span class="fc" id="L46">  public static final class CliqueMessager&lt;EV&gt;</span>
+      extends ScatterFunction&lt;Long, List&lt;List&lt;Long&gt;&gt;, Tuple2&lt;Long, List&lt;Long&gt;&gt;, EV&gt; {
+    public void sendMessages(Vertex&lt;Long, List&lt;List&lt;Long&gt;&gt;&gt; vertex) {
+<span class="fc" id="L49">      List&lt;Long&gt; neighbors = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">      for (Edge&lt;Long, EV&gt; e : getEdges()) neighbors.add(e.getTarget());</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">      for (Long x : neighbors) sendMessageTo(x, new Tuple2&lt;&gt;(vertex.f0, neighbors));</span>
+<span class="fc" id="L52">    }</span>
+  }
+
+  /**
+   * enumerate all maximal cliques which contain the vertex the id of the vertex is maximal in the
+   * clique
+   */
+  private static final class CliqueUpdater
+      extends GatherFunction&lt;Long, List&lt;List&lt;Long&gt;&gt;, Tuple2&lt;Long, List&lt;Long&gt;&gt;&gt; {
+    public void enumerate(
+        TreeSet&lt;Long&gt; P,
+        TreeSet&lt;Long&gt; X,
+        List&lt;Long&gt; C,
+        List&lt;List&lt;Long&gt;&gt; cliques,
+        HashMap&lt;Long, HashSet&lt;Long&gt;&gt; adjList,
+        Long k) {
+<span class="pc bpc" id="L68" title="1 of 4 branches missed.">      if (P.size() == 0 &amp;&amp; X.size() == 0) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (C.size() &lt; 3) return;</span>
+<span class="fc" id="L70">        ArrayList&lt;Long&gt; ans = new ArrayList&lt;&gt;(C);</span>
+<span class="fc" id="L71">        cliques.add(ans);</span>
+<span class="fc" id="L72">        return;</span>
+      }
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">      Long u = P.isEmpty() ? X.last() : P.last();</span>
+<span class="fc" id="L75">      TreeSet&lt;Long&gt; ext = new TreeSet&lt;&gt;(P);</span>
+<span class="fc" id="L76">      ext.removeAll(adjList.get(u));</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">      while (!ext.isEmpty()) {</span>
+<span class="fc" id="L78">        Long q = ext.last();</span>
+<span class="fc" id="L79">        HashSet&lt;Long&gt; neighbors = adjList.get(q);</span>
+<span class="fc" id="L80">        C.add(q);</span>
+<span class="fc" id="L81">        TreeSet&lt;Long&gt; PQ = new TreeSet&lt;&gt;(P);</span>
+<span class="fc" id="L82">        PQ.retainAll(neighbors);</span>
+<span class="fc" id="L83">        TreeSet&lt;Long&gt; XQ = new TreeSet&lt;&gt;(X);</span>
+<span class="fc" id="L84">        XQ.retainAll(neighbors);</span>
+<span class="fc" id="L85">        enumerate(PQ, XQ, C, cliques, adjList, k);</span>
+<span class="fc" id="L86">        P.remove(q);</span>
+<span class="fc" id="L87">        ext.remove(q);</span>
+<span class="fc" id="L88">        X.add(q);</span>
+<span class="fc" id="L89">        C.remove(C.size() - 1);</span>
+<span class="fc" id="L90">      }</span>
+<span class="fc" id="L91">    }</span>
+
+    public void updateVertex(
+        Vertex&lt;Long, List&lt;List&lt;Long&gt;&gt;&gt; vertex,
+        MessageIterator&lt;Tuple2&lt;Long, List&lt;Long&gt;&gt;&gt; messageIterator) {
+<span class="fc" id="L96">      Long k = vertex.getId();</span>
+<span class="fc" id="L97">      HashMap&lt;Long, HashSet&lt;Long&gt;&gt; adjList = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L98">      List&lt;Long&gt; neighbors = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">      for (Tuple2&lt;Long, List&lt;Long&gt;&gt; msg : messageIterator) {</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (msg.f0 &gt;= k) continue;</span>
+<span class="fc" id="L101">        neighbors.add(msg.f0);</span>
+<span class="fc" id="L102">        adjList.put(msg.f0, new HashSet&lt;&gt;(msg.f1));</span>
+<span class="fc" id="L103">      }</span>
+<span class="fc" id="L104">      TreeSet&lt;Long&gt; PStart = new TreeSet&lt;&gt;(neighbors);</span>
+<span class="fc" id="L105">      TreeSet&lt;Long&gt; XStart = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L106">      List&lt;Long&gt; CStart = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L107">      CStart.add(k);</span>
+<span class="fc" id="L108">      List&lt;List&lt;Long&gt;&gt; cliques = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L109">      enumerate(PStart, XStart, CStart, cliques, adjList, k);</span>
+<span class="fc" id="L110">      setNewVertexValue(cliques);</span>
+<span class="fc" id="L111">    }</span>
+  }
+
+  /** initially giving each vertex an empty array list */
+<span class="fc" id="L115">  public static final class VertexMap&lt;K, VV&gt;</span>
+      implements MapFunction&lt;Vertex&lt;K, VV&gt;, Vertex&lt;K, List&lt;List&lt;K&gt;&gt;&gt;&gt; {
+    public Vertex&lt;K, List&lt;List&lt;K&gt;&gt;&gt; map(Vertex&lt;K, VV&gt; vertex) {
+<span class="fc" id="L118">      return new Vertex(vertex.getId(), new ArrayList&lt;&gt;());</span>
+    }
+  }
+
+  /** merge the list of maximal cliques from every vertex into a dataset */
+<span class="fc" id="L123">  public static final class CliqueFlatMap&lt;K&gt;</span>
+      implements FlatMapFunction&lt;Vertex&lt;K, List&lt;List&lt;K&gt;&gt;&gt;, List&lt;K&gt;&gt; {
+    public void flatMap(Vertex&lt;K, List&lt;List&lt;K&gt;&gt;&gt; vertex, Collector&lt;List&lt;K&gt;&gt; collector) {
+<span class="fc" id="L126">      vertex.f1.forEach((x) -&gt; collector.collect(x));</span>
+<span class="fc" id="L127">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

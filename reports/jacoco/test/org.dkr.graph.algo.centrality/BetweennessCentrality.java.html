@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BetweennessCentrality.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.centrality</a> &gt; <span class="el_source">BetweennessCentrality.java</span></div><h1>BetweennessCentrality.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.centrality;
+
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple4;
+import org.apache.flink.api.java.tuple.Tuple5;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.pregel.ComputeFunction;
+import org.apache.flink.graph.pregel.MessageIterator;
+import org.apache.flink.graph.pregel.VertexCentricConfiguration;
+
+import java.util.*;
+
+/**
+ * The Betweenness Centrality computes centrality values is the proportion of a vertex in all
+ * shortest paths. This algorithm will first compute AllPairShortestPath, then count the shortest
+ * path, and finally compute the Betweenness Centrality value.
+ */
+<span class="fc" id="L24">public class BetweennessCentrality</span>
+    implements GraphAlgorithm&lt;Long, Long, Double, DataSet&lt;Vertex&lt;Long, Double&gt;&gt;&gt; {
+  /** Used to sort Tuple3. */
+<span class="fc" id="L27">  static Comparator&lt;Tuple3&lt;Long, Double, Long&gt;&gt; tuple3CompareFunction =</span>
+<span class="fc" id="L28">      new Comparator&lt;Tuple3&lt;Long, Double, Long&gt;&gt;() {</span>
+        @Override
+        public int compare(Tuple3&lt;Long, Double, Long&gt; o1, Tuple3&lt;Long, Double, Long&gt; o2) {
+<span class="fc" id="L31">          return o1.f1.compareTo(o2.f1);</span>
+        }
+      };
+
+<span class="fc" id="L35">  private int maxIterations = 50;</span>
+
+  public void setMaxIterations(int maxIterations) {
+<span class="fc" id="L38">    this.maxIterations = maxIterations;</span>
+<span class="fc" id="L39">  }</span>
+
+  /**
+   * Computing Betweenness Centrality values has four steps:
+   * 1. find All Pair Shortest Path(APSP) by {@link APSPComputeFunction}
+   * 2. count the number of the shortest path by {@link ShortestPathCounting}
+   * 3. compute the Betweenness Centrality by definition by {@link BetweennessCentrality}
+   *
+   * &lt;p&gt;Use parametersVertex and parameterEdge to spread Vertex and Edge information.
+   *
+   * &lt;p&gt;Use setSolutionSetUnmanagedMemory to call runVertexCentricIteration more than once
+   */
+  @Override
+  public DataSet&lt;Vertex&lt;Long, Double&gt;&gt; run(Graph&lt;Long, Long, Double&gt; graph) throws Exception {
+<span class="fc" id="L53">    VertexCentricConfiguration parametersVertex = new VertexCentricConfiguration();</span>
+<span class="fc" id="L54">    parametersVertex.addBroadcastSet(&quot;allVertices&quot;, graph.getVertexIds());</span>
+<span class="fc" id="L55">    parametersVertex.setSolutionSetUnmanagedMemory(true);</span>
+
+<span class="fc" id="L57">    VertexCentricConfiguration parametersEdge = new VertexCentricConfiguration();</span>
+<span class="fc" id="L58">    DataSet&lt;Edge&lt;Long, Double&gt;&gt; edges = graph.getEdges();</span>
+<span class="fc" id="L59">    parametersEdge.addBroadcastSet(&quot;allEdges&quot;, edges);</span>
+<span class="fc" id="L60">    parametersEdge.setSolutionSetUnmanagedMemory(true);</span>
+
+<span class="fc" id="L62">    return graph</span>
+<span class="fc" id="L63">        .mapVertices(new InitVertices())</span>
+<span class="fc" id="L64">        .runVertexCentricIteration(new APSPComputeFunction(), null, maxIterations, parametersVertex)</span>
+<span class="fc" id="L65">        .runVertexCentricIteration(new ShortestPathCounting(), null, maxIterations, parametersEdge)</span>
+<span class="fc" id="L66">        .mapVertices(new AddResultFiled())</span>
+<span class="fc" id="L67">        .runVertexCentricIteration(</span>
+            new BetweennessComputeFunction(), null, maxIterations, parametersVertex)
+<span class="fc" id="L69">        .mapVertices(new GetResult())</span>
+<span class="fc" id="L70">        .getVertices();</span>
+  }
+
+<span class="fc" id="L73">  public static final class InitVertices</span>
+      implements MapFunction&lt;Vertex&lt;Long, Long&gt;, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt; {
+    public Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt; map(Vertex&lt;Long, Long&gt; id) {
+<span class="fc" id="L76">      return new HashMap&lt;&gt;();</span>
+    }
+  }
+
+  /** The compute function for All Pair Shortest Path. */
+<span class="fc" id="L81">  public static final class APSPComputeFunction</span>
+      extends ComputeFunction&lt;
+          Long,
+          Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;,
+          Double,
+          Tuple4&lt;Long, Long, Tuple2&lt;Double, Long&gt;, Boolean&gt;&gt; {
+
+    @Override
+    public void compute(
+        Vertex&lt;Long, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt; vertex,
+        MessageIterator&lt;Tuple4&lt;Long, Long, Tuple2&lt;Double, Long&gt;, Boolean&gt;&gt; messages) {
+<span class="fc" id="L92">      Collection&lt;Long&gt; vertices = getBroadcastSet(&quot;allVertices&quot;);</span>
+<span class="fc" id="L93">      Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt; curMap = vertex.getValue();</span>
+
+<span class="fc bfc" id="L95" title="All 2 branches covered.">      if (getSuperstepNumber() == 1) {</span>
+<span class="fc" id="L96">        Iterable&lt;Edge&lt;Long, Double&gt;&gt; edges = getEdges();</span>
+<span class="fc" id="L97">        curMap.put(vertex.f0, new Tuple2&lt;&gt;(0D, 1L));</span>
+        // edges can only be iterated once
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        for (Edge&lt;Long, Double&gt; e : edges) {</span>
+<span class="fc" id="L100">          curMap.put(e.getTarget(), new Tuple2&lt;&gt;(e.getValue(), 0L));</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">          for (Long vertexId : vertices) {</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            if (vertex.getId().equals(vertexId)) continue;</span>
+<span class="fc" id="L103">            sendMessageTo(</span>
+                vertexId,
+<span class="fc" id="L105">                new Tuple4&lt;&gt;(e.getSource(), e.getTarget(), new Tuple2&lt;&gt;(e.getValue(), 0L), true));</span>
+<span class="fc" id="L106">          }</span>
+<span class="fc" id="L107">        }</span>
+<span class="fc" id="L108">        setNewVertexValue(curMap);</span>
+<span class="fc" id="L109">        return;</span>
+      }
+
+<span class="fc bfc" id="L112" title="All 2 branches covered.">      for (Tuple4&lt;Long, Long, Tuple2&lt;Double, Long&gt;, Boolean&gt; msg : messages) {</span>
+<span class="fc" id="L113">        boolean send = false;</span>
+<span class="fc" id="L114">        Tuple2&lt;Double, Long&gt; msgToSend = new Tuple2&lt;&gt;();</span>
+<span class="fc" id="L115">        msgToSend.f0 = 0D;</span>
+<span class="fc" id="L116">        msgToSend.f1 = 0L;</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (curMap.containsKey(msg.f0)) {</span>
+<span class="fc" id="L118">          Tuple2&lt;Double, Long&gt; v = curMap.get(msg.f0);</span>
+<span class="fc" id="L119">          Tuple2&lt;Double, Long&gt; w = msg.f2;</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">          if (curMap.containsKey(msg.f1)) {</span>
+<span class="fc" id="L121">            Tuple2&lt;Double, Long&gt; u = curMap.get(msg.f1);</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            if (w.f0 + v.f0 &lt; u.f0) {</span>
+<span class="fc" id="L123">              msgToSend.f0 = w.f0 + v.f0;</span>
+<span class="fc" id="L124">              u.f0 = msgToSend.f0;</span>
+<span class="fc" id="L125">              curMap.replace(msg.f1, msgToSend);</span>
+<span class="fc" id="L126">              send = true;</span>
+            }
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">          } else if (!vertex.getId().equals(msg.f1)) {</span>
+<span class="fc" id="L129">            msgToSend.f0 = w.f0 + v.f0;</span>
+<span class="fc" id="L130">            curMap.put(msg.f1, msgToSend);</span>
+<span class="fc" id="L131">            send = true;</span>
+          }
+        }
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (send) {</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">          for (Long vertexId : vertices) {</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            if (vertexId.equals(vertex.getId())) continue;</span>
+<span class="fc" id="L137">            sendMessageTo(vertexId, new Tuple4&lt;&gt;(vertex.getId(), msg.f1, msgToSend, false));</span>
+<span class="fc" id="L138">          }</span>
+        }
+<span class="fc" id="L140">      }</span>
+<span class="fc" id="L141">      setNewVertexValue(curMap);</span>
+<span class="fc" id="L142">    }</span>
+  }
+
+  /** Add a field to save the Betweenness Centrality value. */
+<span class="fc" id="L146">  public static final class AddResultFiled</span>
+      implements MapFunction&lt;
+          Vertex&lt;Long, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt;,
+          Tuple2&lt;Double, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt;&gt; {
+    public Tuple2&lt;Double, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt; map(
+        Vertex&lt;Long, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt; vertex) {
+<span class="fc" id="L152">      return new Tuple2&lt;&gt;(0D, vertex.f1);</span>
+    }
+  }
+
+  /** Get the Betweenness Centrality value and ignore Intermediate values. */
+<span class="fc" id="L157">  public static final class GetResult</span>
+      implements MapFunction&lt;
+          Vertex&lt;Long, Tuple2&lt;Double, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt;&gt;, Double&gt; {
+    public Double map(Vertex&lt;Long, Tuple2&lt;Double, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt;&gt; vertex) {
+<span class="fc" id="L161">      return vertex.f1.f0;</span>
+    }
+  }
+
+  /**
+   * Use some formulas to count the shortest path.
+   *
+   * &lt;p&gt;The number of the shortest path from u to v SP(u,v) is the sum of SP(u,x) if dist[u][v] =
+   * dist[u][x] + w[x][v].
+   *
+   * &lt;p&gt;For each vertex u, this process will execute from near vertex to far vertex.
+   */
+<span class="fc" id="L173">  public static final class ShortestPathCounting</span>
+      extends ComputeFunction&lt;
+          Long, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;, Double, Tuple5&lt;Long, Long, Long, Double, Double&gt;&gt; {
+    public void compute(
+        Vertex&lt;Long, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt; vertex,
+        MessageIterator&lt;Tuple5&lt;Long, Long, Long, Double, Double&gt;&gt; messages) {
+<span class="fc" id="L179">      Collection&lt;Edge&lt;Long, Double&gt;&gt; edges = getBroadcastSet(&quot;allEdges&quot;);</span>
+<span class="fc" id="L180">      Map&lt;Tuple2&lt;Long, Long&gt;, Double&gt; edgeValue = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">      for (Edge&lt;Long, Double&gt; edge : edges) {</span>
+<span class="fc" id="L182">        edgeValue.put(new Tuple2&lt;&gt;(edge.f0, edge.f1), edge.f2);</span>
+<span class="fc" id="L183">      }</span>
+
+<span class="fc" id="L185">      List&lt;Tuple3&lt;Long, Double, Long&gt;&gt; pathList = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L186">      vertex.f1.forEach(</span>
+          (key, value) -&gt; {
+<span class="fc" id="L188">            pathList.add(new Tuple3&lt;&gt;(key, value.f0, value.f1));</span>
+<span class="fc" id="L189">          });</span>
+<span class="fc" id="L190">      pathList.sort(tuple3CompareFunction);</span>
+<span class="fc" id="L191">      pathList.get(0).f2 = 1L;</span>
+
+<span class="fc" id="L193">      int pathListLength = pathList.toArray().length;</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">      for (int v = 1; v &lt; pathListLength; v++) {</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        for (int u = 0; u &lt;= v; u++) {</span>
+<span class="fc" id="L196">          Double uvDist = edgeValue.get(new Tuple2&lt;&gt;(pathList.get(u).f0, pathList.get(v).f0));</span>
+<span class="fc bfc" id="L197" title="All 4 branches covered.">          if (uvDist != null &amp;&amp; uvDist.equals(pathList.get(v).f1 - pathList.get(u).f1)) {</span>
+<span class="fc" id="L198">            pathList.get(v).f2 += pathList.get(u).f2;</span>
+          }
+        }
+      }
+
+<span class="fc" id="L203">      Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt; newValue = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">      for (Tuple3&lt;Long, Double, Long&gt; node : pathList) {</span>
+<span class="fc" id="L205">        newValue.put(node.f0, new Tuple2&lt;&gt;(node.f1, node.f2));</span>
+<span class="fc" id="L206">      }</span>
+<span class="fc" id="L207">      setNewVertexValue(newValue);</span>
+<span class="fc" id="L208">    }</span>
+  }
+
+  /**
+   * Use the definition to compute the Betweenness Centrality value. The message [u, v, dist, count]
+   * means the length and number of the shortest path from u to v are dist and count, respectively.
+   */
+<span class="fc" id="L215">  public static final class BetweennessComputeFunction</span>
+      extends ComputeFunction&lt;
+          Long,
+          Tuple2&lt;Double, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt;,
+          Double,
+          Tuple4&lt;Long, Long, Double, Long&gt;&gt; {
+    public void compute(
+        Vertex&lt;Long, Tuple2&lt;Double, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt;&gt; vertex,
+        MessageIterator&lt;Tuple4&lt;Long, Long, Double, Long&gt;&gt; messages) {
+<span class="fc" id="L224">      Collection&lt;Long&gt; vertices = getBroadcastSet(&quot;allVertices&quot;);</span>
+
+<span class="fc bfc" id="L226" title="All 2 branches covered.">      if (getSuperstepNumber() == 1) {</span>
+<span class="fc" id="L227">        Tuple4&lt;Long, Long, Double, Long&gt; msg = new Tuple4&lt;&gt;(vertex.f0, -1L, -1D, -1L);</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        for (Long vertexId : vertices) {</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">          if (vertexId.equals(vertex.getId())) continue;</span>
+<span class="fc" id="L230">          sendMessageTo(vertexId, msg);</span>
+<span class="fc" id="L231">        }</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">      } else if (getSuperstepNumber() == 2) {</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        for (Tuple4&lt;Long, Long, Double, Long&gt; msg : messages) {</span>
+<span class="fc" id="L234">          msg.f1 = vertex.f0;</span>
+<span class="fc" id="L235">          Tuple2&lt;Double, Long&gt; dist = vertex.f1.f1.get(msg.f0);</span>
+<span class="fc" id="L236">          msg.f2 = dist.f0;</span>
+<span class="fc" id="L237">          msg.f3 = dist.f1;</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">          for (Long vertexId : vertices) {</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">            if (vertexId.equals(vertex.getId())) continue;</span>
+<span class="fc" id="L240">            sendMessageTo(vertexId, msg);</span>
+<span class="fc" id="L241">          }</span>
+<span class="fc" id="L242">        }</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">      } else if (getSuperstepNumber() == 3) {</span>
+<span class="fc" id="L244">        Tuple2&lt;Double, Map&lt;Long, Tuple2&lt;Double, Long&gt;&gt;&gt; oldValue = vertex.getValue();</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        for (Tuple4&lt;Long, Long, Double, Long&gt; msg : messages) {</span>
+<span class="pc bpc" id="L246" title="1 of 4 branches missed.">          if (msg.f0 != vertex.f0 &amp;&amp; msg.f1 != vertex.f0) {</span>
+<span class="fc" id="L247">			Tuple2&lt;Double, Long&gt; path1 = vertex.f1.f1.get(msg.f0);</span>
+<span class="fc" id="L248">			Tuple2&lt;Double, Long&gt; path2 = vertex.f1.f1.get(msg.f1);</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">			if (path1.f0 + path2.f0 == msg.f2) {</span>
+<span class="fc" id="L250">			  oldValue.f0 += path1.f1 * path2.f1 * 1.0 / msg.f3;</span>
+			}
+          }
+<span class="fc" id="L253">        }</span>
+<span class="fc" id="L254">        setNewVertexValue(oldValue);</span>
+      }
+<span class="fc" id="L256">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

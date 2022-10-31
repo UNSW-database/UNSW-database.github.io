@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KTruss.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.cohesive</a> &gt; <span class="el_source">KTruss.java</span></div><h1>KTruss.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.cohesive;
+
+import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.library.TriangleEnumerator;
+import org.apache.flink.graph.spargel.ScatterFunction;
+import org.apache.flink.graph.spargel.MessageIterator;
+import org.apache.flink.graph.spargel.ScatterGatherConfiguration;
+import org.apache.flink.graph.spargel.GatherFunction;
+import org.apache.flink.types.NullValue;
+import org.apache.flink.util.Collector;
+
+import java.util.*;
+
+/**
+ * The class KTruss computes the truss number of each edge in the graph under K-Truss model. The
+ * input graph must be an undirected graph. The ID type of the input graph must Long. The output of
+ * the class is a dataset of the Tuple3 where each tuple (u,v,w) denotes the edge (u,v)'s truss
+ * number is w.
+ *
+ * @param &lt;VV&gt; vertex value type
+ * @param &lt;EV&gt; edge value type
+ */
+<span class="fc" id="L31">public class KTruss&lt;VV, EV&gt;</span>
+    implements GraphAlgorithm&lt;Long, VV, EV, DataSet&lt;Tuple3&lt;Long, Long, Long&gt;&gt;&gt; {
+
+  // count the number of updated verities, stop if all vertices are not updated
+  private static final String UPDATE_VERTICES = &quot;updatedVertices&quot;;
+<span class="fc" id="L36">  private int maxIterations = Integer.MAX_VALUE;</span>
+
+  /** set the maximum iterations for the gelly */
+  public void setMaxIterations(int maxIterations) {
+<span class="fc" id="L40">    this.maxIterations = maxIterations;</span>
+<span class="fc" id="L41">  }</span>
+
+  /** get truss number of each edge */
+  static class KTrussData {
+    /** the truss number of the (u,v) */
+    public Long trussness;
+    /**
+     * truss number of every triangle (u,v,w) i.e., minimum truss number of (u,v), (v,w), (u,w)
+     * stored as &lt;w, truss number&gt;
+     */
+    public HashMap&lt;Long, Long&gt; nbrTrussness;
+    /** if truss number is changed in last round */
+    boolean changed;
+
+<span class="fc" id="L55">    public KTrussData(Long trussness, HashMap&lt;Long, Long&gt; nbrTrussness, boolean changed) {</span>
+<span class="fc" id="L56">      this.trussness = trussness;</span>
+<span class="fc" id="L57">      this.changed = changed;</span>
+<span class="fc" id="L58">      this.nbrTrussness = nbrTrussness;</span>
+<span class="fc" id="L59">    }</span>
+  }
+
+  /**
+   * get truss number of each edge
+   *
+   * &lt;p&gt;1. build a PL graph, where each PL vertex is edge in G, if two edges are in the same
+   * triangle, their PL vertices are adjacent in PL graph
+   *
+   * &lt;p&gt;2. iteratively update the truss number of every PL vertex until convergence
+   */
+  public DataSet&lt;Tuple3&lt;Long, Long, Long&gt;&gt; run(Graph&lt;Long, VV, EV&gt; inputGraph) throws Exception {
+    /** get triangles */
+<span class="fc" id="L72">    DataSet&lt;Tuple3&lt;Long, Long, Long&gt;&gt; triangles =</span>
+<span class="fc" id="L73">        inputGraph.getUndirected().run(new TriangleEnumerator&lt;&gt;()).map(new TriangleSort());</span>
+    /** build PL vertices */
+<span class="fc" id="L75">    DataSet&lt;Vertex&lt;Tuple2&lt;Long, Long&gt;, KTrussData&gt;&gt; PLVertices =</span>
+        triangles
+<span class="fc" id="L77">            .flatMap(new TriagnleToEdgeWithCount())</span>
+<span class="fc" id="L78">            .union(inputGraph.getEdgeIds().map(new EdgeWithCount()))</span>
+<span class="fc" id="L79">            .groupBy(0, 1)</span>
+<span class="fc" id="L80">            .sum(2)</span>
+<span class="fc" id="L81">            .map(new SupportToKTrussData());</span>
+    /** build PL edges */
+<span class="fc" id="L83">    DataSet&lt;Edge&lt;Tuple2&lt;Long, Long&gt;, NullValue&gt;&gt; PLEdges =</span>
+<span class="fc" id="L84">        triangles.flatMap(new TriagnleToPLEdge()).distinct().flatMap(new DuplicatePLEdge());</span>
+
+<span class="fc" id="L86">    Graph&lt;Tuple2&lt;Long, Long&gt;, KTrussData, NullValue&gt; graph =</span>
+<span class="fc" id="L87">        Graph.fromDataSet(PLVertices, PLEdges, inputGraph.getContext());</span>
+
+<span class="fc" id="L89">    ScatterGatherConfiguration parameters = new ScatterGatherConfiguration();</span>
+<span class="fc" id="L90">    parameters.setName(&quot;K-Truss Iteration&quot;);</span>
+
+<span class="fc" id="L92">    return graph</span>
+<span class="fc" id="L93">        .runScatterGatherIteration(</span>
+            new KTrussMessenger&lt;&gt;(), new KTrussUpdater(), maxIterations, parameters)
+<span class="fc" id="L95">        .getVertices()</span>
+<span class="fc" id="L96">        .map(new KTrussDataMap());</span>
+  }
+
+  /** sort the id of vertices of each triangle */
+<span class="fc" id="L100">  public static final class TriangleSort</span>
+      implements MapFunction&lt;Tuple3&lt;Long, Long, Long&gt;, Tuple3&lt;Long, Long, Long&gt;&gt; {
+    public Tuple3&lt;Long, Long, Long&gt; map(Tuple3&lt;Long, Long, Long&gt; tuple) {
+<span class="fc" id="L103">      List&lt;Long&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L104">      list.add(tuple.f0);</span>
+<span class="fc" id="L105">      list.add(tuple.f1);</span>
+<span class="fc" id="L106">      list.add(tuple.f2);</span>
+<span class="fc" id="L107">      Collections.sort(list);</span>
+<span class="fc" id="L108">      return new Tuple3&lt;&gt;(list.get(0), list.get(1), list.get(2));</span>
+    }
+  }
+
+  /** split three edges in each triangle */
+<span class="fc" id="L113">  public static final class TriagnleToEdgeWithCount</span>
+      implements FlatMapFunction&lt;Tuple3&lt;Long, Long, Long&gt;, Tuple3&lt;Long, Long, Long&gt;&gt; {
+    public void flatMap(Tuple3&lt;Long, Long, Long&gt; t, Collector&lt;Tuple3&lt;Long, Long, Long&gt;&gt; collector) {
+<span class="fc" id="L116">      collector.collect(new Tuple3&lt;&gt;(t.f0, t.f1, 1L));</span>
+<span class="fc" id="L117">      collector.collect(new Tuple3&lt;&gt;(t.f0, t.f2, 1L));</span>
+<span class="fc" id="L118">      collector.collect(new Tuple3&lt;&gt;(t.f1, t.f2, 1L));</span>
+<span class="fc" id="L119">    }</span>
+  }
+
+  /** sort the id of each edge */
+<span class="fc" id="L123">  public static final class EdgeWithCount</span>
+      implements MapFunction&lt;Tuple2&lt;Long, Long&gt;, Tuple3&lt;Long, Long, Long&gt;&gt; {
+    public Tuple3&lt;Long, Long, Long&gt; map(Tuple2&lt;Long, Long&gt; t) {
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">      if (t.f0 &lt; t.f1) {</span>
+<span class="fc" id="L127">        return new Tuple3&lt;&gt;(t.f0, t.f1, 0L);</span>
+      } else {
+<span class="nc" id="L129">        return new Tuple3&lt;&gt;(t.f1, t.f0, 0L);</span>
+      }
+    }
+  }
+
+  /** map the support number into each edge */
+<span class="fc" id="L135">  public static final class SupportToKTrussData</span>
+      implements MapFunction&lt;Tuple3&lt;Long, Long, Long&gt;, Vertex&lt;Tuple2&lt;Long, Long&gt;, KTrussData&gt;&gt; {
+    public Vertex&lt;Tuple2&lt;Long, Long&gt;, KTrussData&gt; map(Tuple3&lt;Long, Long, Long&gt; t) {
+<span class="fc" id="L138">      return new Vertex&lt;&gt;(</span>
+<span class="fc" id="L139">          new Tuple2&lt;&gt;(t.f0, t.f1), new KTrussData(t.f2 + 2, new HashMap&lt;&gt;(), true));</span>
+    }
+  }
+
+  /** save triangles to PL edges */
+<span class="fc" id="L144">  public static final class TriagnleToPLEdge</span>
+      implements FlatMapFunction&lt;Tuple3&lt;Long, Long, Long&gt;, Edge&lt;Tuple2&lt;Long, Long&gt;, NullValue&gt;&gt; {
+    public void flatMap(
+        Tuple3&lt;Long, Long, Long&gt; t, Collector&lt;Edge&lt;Tuple2&lt;Long, Long&gt;, NullValue&gt;&gt; collector) {
+<span class="fc" id="L148">      Tuple2&lt;Long, Long&gt; a = new Tuple2&lt;&gt;(t.f0, t.f1);</span>
+<span class="fc" id="L149">      Tuple2&lt;Long, Long&gt; b = new Tuple2&lt;&gt;(t.f0, t.f2);</span>
+<span class="fc" id="L150">      Tuple2&lt;Long, Long&gt; c = new Tuple2&lt;&gt;(t.f1, t.f2);</span>
+<span class="fc" id="L151">      collector.collect(new Edge&lt;&gt;(a, b, NullValue.getInstance()));</span>
+<span class="fc" id="L152">      collector.collect(new Edge&lt;&gt;(a, c, NullValue.getInstance()));</span>
+<span class="fc" id="L153">      collector.collect(new Edge&lt;&gt;(b, c, NullValue.getInstance()));</span>
+<span class="fc" id="L154">    }</span>
+  }
+
+  /** duplicate PL edges */
+<span class="fc" id="L158">  public static final class DuplicatePLEdge</span>
+      implements FlatMapFunction&lt;
+          Edge&lt;Tuple2&lt;Long, Long&gt;, NullValue&gt;, Edge&lt;Tuple2&lt;Long, Long&gt;, NullValue&gt;&gt; {
+    public void flatMap(
+        Edge&lt;Tuple2&lt;Long, Long&gt;, NullValue&gt; t,
+        Collector&lt;Edge&lt;Tuple2&lt;Long, Long&gt;, NullValue&gt;&gt; collector) {
+<span class="fc" id="L164">      collector.collect(t);</span>
+<span class="fc" id="L165">      collector.collect(new Edge&lt;&gt;(t.getTarget(), t.getSource(), NullValue.getInstance()));</span>
+<span class="fc" id="L166">    }</span>
+  }
+
+  /** map truss number of each edge into dataset */
+<span class="fc" id="L170">  public static final class KTrussDataMap</span>
+      implements MapFunction&lt;Vertex&lt;Tuple2&lt;Long, Long&gt;, KTrussData&gt;, Tuple3&lt;Long, Long, Long&gt;&gt; {
+    public Tuple3&lt;Long, Long, Long&gt; map(Vertex&lt;Tuple2&lt;Long, Long&gt;, KTrussData&gt; t) {
+<span class="fc" id="L173">      return new Tuple3&lt;&gt;(t.f0.f0, t.f0.f1, t.f1.trussness);</span>
+    }
+  }
+
+  /** distributes the current trussness to neighbors */
+<span class="fc" id="L178">  public static final class KTrussMessenger&lt;EV&gt;</span>
+      extends ScatterFunction&lt;Tuple2&lt;Long, Long&gt;, KTrussData, Tuple3&lt;Long, Long, Long&gt;, EV&gt; {
+    public void sendMessages(Vertex&lt;Tuple2&lt;Long, Long&gt;, KTrussData&gt; vertex) {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">      if (vertex.f1.changed)</span>
+<span class="fc" id="L182">        sendMessageToAllNeighbors(new Tuple3&lt;&gt;(vertex.f0.f0, vertex.f0.f1, vertex.f1.trussness));</span>
+<span class="fc" id="L183">    }</span>
+  }
+
+  /** iteratively update the truss number of every PL vertex until convergence */
+<span class="fc" id="L187">  public static final class KTrussUpdater</span>
+      extends GatherFunction&lt;Tuple2&lt;Long, Long&gt;, KTrussData, Tuple3&lt;Long, Long, Long&gt;&gt; {
+    public void updateVertex(
+        Vertex&lt;Tuple2&lt;Long, Long&gt;, KTrussData&gt; vertex,
+        MessageIterator&lt;Tuple3&lt;Long, Long, Long&gt;&gt; messageIterator) {
+<span class="fc" id="L192">      Long u = vertex.f0.f0, v = vertex.f0.f1;</span>
+<span class="fc" id="L193">      HashMap&lt;Long, Long&gt; nbrTrussness = vertex.getValue().nbrTrussness;</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">      for (Tuple3&lt;Long, Long, Long&gt; msg : messageIterator) {</span>
+        Long un;
+<span class="fc" id="L196">        Long x = msg.f0, y = msg.f1, tr = msg.f2;</span>
+<span class="fc bfc" id="L197" title="All 4 branches covered.">        if (u.equals(x) || v.equals(x)) {</span>
+<span class="fc" id="L198">          un = y;</span>
+        } else {
+<span class="fc" id="L200">          un = x;</span>
+        }
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        nbrTrussness.compute(un, (k, vv) -&gt; vv == null ? tr : Math.min(tr, vv));</span>
+<span class="fc" id="L203">      }</span>
+<span class="fc" id="L204">      int oldTrussness = vertex.getValue().trussness.intValue();</span>
+<span class="fc" id="L205">      TreeMap&lt;Integer, Integer&gt; map = new TreeMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L207" title="All 2 branches covered.">      for (Long vv : nbrTrussness.values()) {</span>
+<span class="fc" id="L208">        long j = Math.min(oldTrussness, vv);</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        map.compute((int) j, (k, vvv) -&gt; vvv == null ? 1 : vvv + 1);</span>
+<span class="fc" id="L210">      }</span>
+      int newTrussness;
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">      int last = map.size() == 0 ? 2 : map.lastKey();</span>
+<span class="fc" id="L213">      int sum = 0;</span>
+<span class="fc" id="L214">      for (int i = last; ; i--) {</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">        if (map.containsKey(i)) sum += map.get(i);</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">        if (sum &gt;= i - 2) {</span>
+<span class="fc" id="L217">          newTrussness = i;</span>
+<span class="fc" id="L218">          break;</span>
+        }
+      }
+<span class="fc" id="L221">      setNewVertexValue(</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">          new KTrussData((long) newTrussness, nbrTrussness, newTrussness &lt; oldTrussness));</span>
+<span class="fc" id="L223">    }</span>
+  }
+
+  public int getMaxIterations() {
+<span class="fc" id="L227">    return maxIterations;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

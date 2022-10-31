@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleSourceSimilarity.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.similarity</a> &gt; <span class="el_source">SingleSourceSimilarity.java</span></div><h1>SingleSourceSimilarity.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.similarity;
+
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.pregel.ComputeFunction;
+import org.apache.flink.graph.pregel.MessageIterator;
+import org.apache.flink.types.LongValue;
+
+import java.util.List;
+
+/**
+ * The Single Source Similarity Algorithm compute the similarity between a source vertex and every
+ * other vertices. It will return a Vertex DataSet where the vertex value is the similarity. The
+ * default similarity function is the Jaccard Function and can be changed to Cosine Function.
+ *
+ * &lt;p&gt;TODO: user-specified similarity function
+ *
+ * @param &lt;K&gt; ID type
+ * @param &lt;VV&gt; vertex value type
+ * @param &lt;EV&gt; edge value type
+ */
+<span class="nc" id="L27">public class SingleSourceSimilarity&lt;K, VV, EV&gt;</span>
+    implements GraphAlgorithm&lt;K, VV, EV, DataSet&lt;Vertex&lt;K, Double&gt;&gt;&gt; {
+<span class="nc" id="L29">  private String similarityFunctionType = &quot;Jaccard&quot;;</span>
+<span class="nc" id="L30">  private K sourceVertex = null;</span>
+
+  /** set source vertex and similarity function type */
+  public void setSourceVertex(K sourceVertex) {
+<span class="nc" id="L34">    this.sourceVertex = sourceVertex;</span>
+<span class="nc" id="L35">  }</span>
+
+  public void setType(String similarityFunctionType) {
+<span class="nc" id="L38">    this.similarityFunctionType = similarityFunctionType;</span>
+<span class="nc" id="L39">  }</span>
+
+  public DataSet&lt;Vertex&lt;K, Double&gt;&gt; run(Graph&lt;K, VV, EV&gt; graph) throws Exception {
+<span class="nc" id="L42">    Double beginVertexDegree = 0.0;</span>
+<span class="nc" id="L43">    List&lt;Tuple2&lt;K, LongValue&gt;&gt; degrees = graph.getDegrees().collect();</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">    for (int i = 0; i &lt; degrees.size(); i++) {</span>
+<span class="nc bnc" id="L45" title="All 2 branches missed.">      if (degrees.get(i).f0.equals(sourceVertex)) {</span>
+<span class="nc" id="L46">        beginVertexDegree = (double) degrees.get(i).f1.getValue() / 2;</span>
+      }
+    }
+
+<span class="nc" id="L50">    return graph</span>
+<span class="nc" id="L51">        .mapVertices(new InitialVertexValue&lt;&gt;(sourceVertex))</span>
+<span class="nc" id="L52">        .runVertexCentricIteration(</span>
+            new SSSComputationFunction(beginVertexDegree, similarityFunctionType), null, 10)
+<span class="nc" id="L54">        .getVertices();</span>
+  }
+
+  private static final class InitialVertexValue&lt;K, VV&gt;
+      implements MapFunction&lt;Vertex&lt;K, VV&gt;, Double&gt; {
+<span class="nc" id="L59">    private K beginVertex = null;</span>
+
+<span class="nc" id="L61">    private InitialVertexValue(K beginVertex) {</span>
+<span class="nc" id="L62">      this.beginVertex = beginVertex;</span>
+<span class="nc" id="L63">    }</span>
+
+    public Double map(Vertex&lt;K, VV&gt; vertex) {
+<span class="nc bnc" id="L66" title="All 2 branches missed.">      if (vertex.getId().equals(beginVertex)) {</span>
+<span class="nc" id="L67">        return 1.0;</span>
+      } else {
+<span class="nc" id="L69">        return 0.0;</span>
+      }
+    }
+  }
+
+  /**
+   * In the 1st superstep, the source vertex send a message to all neighbors.
+   *
+   * &lt;p&gt;In the 2nd superstep, those neighbors also send a message to all neighbors.
+   *
+   * &lt;p&gt;In the 3rd superstep, all vertices collect messages(i.e., same neighbors as the source
+   * vertex) and compute the similarity.
+   */
+  public static final class SSSComputationFunction&lt;K, EV&gt;
+      extends ComputeFunction&lt;K, Double, EV, Double&gt; {
+
+    private final Double sourceVertexDegree;
+    private final String type;
+
+<span class="nc" id="L88">    public SSSComputationFunction(Double beginVertexDegree, String type) {</span>
+<span class="nc" id="L89">      this.sourceVertexDegree = beginVertexDegree;</span>
+<span class="nc" id="L90">      this.type = type;</span>
+<span class="nc" id="L91">    }</span>
+
+    public Double jaccardSimilarity(Double intersection, Double a, Double b) {
+<span class="nc" id="L94">      return intersection / (a + b - intersection);</span>
+    }
+
+    public Double cosineSimilarity(Double intersection, Double a, Double b) {
+<span class="nc" id="L98">      return intersection / (Math.sqrt(a) * Math.sqrt(b));</span>
+    }
+
+    public Double computeSimilarity(Double intersection, Double a, Double b) {
+<span class="nc bnc" id="L102" title="All 3 branches missed.">      switch (type) {</span>
+        case &quot;Jaccard&quot;:
+<span class="nc" id="L104">          return jaccardSimilarity(intersection, a, b);</span>
+        case &quot;Cosine&quot;:
+<span class="nc" id="L106">          return cosineSimilarity(intersection, a, b);</span>
+        default:
+<span class="nc" id="L108">          return 0.0;</span>
+      }
+    }
+
+    public void compute(Vertex&lt;K, Double&gt; vertex, MessageIterator&lt;Double&gt; messages) {
+
+<span class="nc bnc" id="L114" title="All 2 branches missed.">      if (getSuperstepNumber() == 1) {</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        if (vertex.getValue().equals(1.0)) {</span>
+<span class="nc" id="L116">          vertex.setValue(1.0);</span>
+<span class="nc" id="L117">          sendMessageToAllNeighbors(1.0);</span>
+        }
+<span class="nc bnc" id="L119" title="All 2 branches missed.">      } else if (getSuperstepNumber() == 2) {</span>
+<span class="nc" id="L120">        Double msgs = 0.0;</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        for (Double msg : messages) {</span>
+<span class="nc" id="L122">          msgs += 1.0;</span>
+<span class="nc" id="L123">        }</span>
+<span class="nc" id="L124">        sendMessageToAllNeighbors(msgs);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">      } else if (getSuperstepNumber() == 3) {</span>
+<span class="nc" id="L126">        Double msgs = 0.0;</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        for (Double msg : messages) {</span>
+<span class="nc" id="L128">          msgs += msg;</span>
+<span class="nc" id="L129">        }</span>
+<span class="nc" id="L130">        double vDegree = 0.0;</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        for (Edge&lt;K, EV&gt; e : getEdges()) {</span>
+<span class="nc" id="L132">          vDegree += 1.0;</span>
+<span class="nc" id="L133">        }</span>
+<span class="nc" id="L134">        setNewVertexValue(computeSimilarity(msgs, sourceVertexDegree, vDegree));</span>
+      }
+<span class="nc" id="L136">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

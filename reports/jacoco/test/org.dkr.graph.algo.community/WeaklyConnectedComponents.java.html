@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WeaklyConnectedComponents.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.community</a> &gt; <span class="el_source">WeaklyConnectedComponents.java</span></div><h1>WeaklyConnectedComponents.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.community;
+
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
+import org.apache.flink.api.java.typeutils.TupleTypeInfo;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.spargel.GatherFunction;
+import org.apache.flink.graph.spargel.MessageIterator;
+import org.apache.flink.graph.spargel.ScatterFunction;
+import org.apache.flink.types.NullValue;
+
+/**
+ * The class WeaklyConnectedComponents computes weakly connected components and converges when no
+ * vertex updates its component ID or when the maximum number of iterations has been reached.
+ *
+ * @param &lt;K&gt; ID type
+ * @param &lt;VV&gt; vertex value type
+ * @param &lt;EV&gt; edge value type
+ */
+<span class="fc" id="L23">public class WeaklyConnectedComponents&lt;K, VV, EV&gt;</span>
+    implements GraphAlgorithm&lt;K, VV, EV, DataSet&lt;Vertex&lt;K, VV&gt;&gt;&gt; {
+
+<span class="fc" id="L26">  private int maxIterations = Integer.MAX_VALUE;</span>
+
+  /** set the maximum iterations for the gelly */
+  public void setMaxIterations(int maxIterations) {
+<span class="fc" id="L30">    this.maxIterations = maxIterations;</span>
+<span class="fc" id="L31">  }</span>
+
+  /** get weakly connected components of the graph */
+  public DataSet&lt;Vertex&lt;K, VV&gt;&gt; run(Graph&lt;K, VV, EV&gt; inputGraph) throws Exception {
+<span class="fc" id="L35">    TypeInformation&lt;VV&gt; valueTypeInfo =</span>
+<span class="fc" id="L36">        ((TupleTypeInfo&lt;?&gt;) inputGraph.getVertices().getType()).getTypeAt(1);</span>
+<span class="fc" id="L37">    Graph&lt;K, VV, EV&gt; graph = inputGraph.getUndirected();</span>
+<span class="fc" id="L38">    return graph</span>
+<span class="fc" id="L39">        .runScatterGatherIteration(new WCCMessenger(valueTypeInfo), new WCCUpdater(), maxIterations)</span>
+<span class="fc" id="L40">        .getVertices();</span>
+  }
+
+  /** send the current vertex value to all adjacent vertices */
+  public static final class WCCMessenger&lt;K, VV extends Comparable&lt;VV&gt;&gt;
+      extends ScatterFunction&lt;K, VV, VV, NullValue&gt; implements ResultTypeQueryable&lt;VV&gt; {
+
+    private final TypeInformation&lt;VV&gt; typeInformation;
+
+<span class="fc" id="L49">    public WCCMessenger(TypeInformation&lt;VV&gt; typeInformation) {</span>
+<span class="fc" id="L50">      this.typeInformation = typeInformation;</span>
+<span class="fc" id="L51">    }</span>
+
+    public void sendMessages(Vertex&lt;K, VV&gt; vertex) throws Exception {
+<span class="fc" id="L54">      sendMessageToAllNeighbors(vertex.getValue());</span>
+<span class="fc" id="L55">    }</span>
+
+    public TypeInformation&lt;VV&gt; getProducedType() {
+<span class="fc" id="L58">      return typeInformation;</span>
+    }
+  }
+
+  /**
+   * update the value of a vertex by picking the minimum neighbor value out of all the incoming
+   * messages
+   */
+<span class="fc" id="L66">  public static final class WCCUpdater&lt;K, VV extends Comparable&lt;VV&gt;&gt;</span>
+      extends GatherFunction&lt;K, VV, VV&gt; {
+    public void updateVertex(Vertex&lt;K, VV&gt; vertex, MessageIterator&lt;VV&gt; messages) throws Exception {
+<span class="fc" id="L69">      VV current = vertex.getValue();</span>
+<span class="fc" id="L70">      VV min = current;</span>
+<span class="fc bfc" id="L71" title="All 4 branches covered.">      for (VV msg : messages) if (msg.compareTo(min) &lt; 0) min = msg;</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">      if (!min.equals(current)) setNewVertexValue(min);</span>
+<span class="fc" id="L73">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

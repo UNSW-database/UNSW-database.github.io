@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AlgoRunner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo</a> &gt; <span class="el_source">AlgoRunner.java</span></div><h1>AlgoRunner.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo;
+
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.library.clustering.directed.LocalClusteringCoefficient;
+import org.dkr.graph.algo.centrality.*;
+import org.dkr.graph.algo.cohesive.KCore;
+import org.dkr.graph.algo.cohesive.KTruss;
+import org.dkr.graph.algo.cohesive.MaximalClique;
+import org.dkr.graph.algo.community.*;
+import org.dkr.graph.algo.path.*;
+import org.dkr.graph.algo.similarity.AllPairSimilarity;
+import org.dkr.graph.algo.similarity.SingleSourceSimilarity;
+import org.dkr.graph.algo.traversal.BFS;
+import org.dkr.graph.algo.traversal.TopoSort;
+import org.dkr.graph.algo.utils.GraphType;
+import org.dkr.graph.io.GraphLoader;
+
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+
+<span class="nc" id="L29">public class AlgoRunner {</span>
+
+  public static void runBFS(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+<span class="nc" id="L32">    BFS&lt;Long, Long, Long&gt; bfs = new BFS&lt;&gt;();</span>
+<span class="nc" id="L33">    bfs.setBeginVertex(4L);</span>
+<span class="nc" id="L34">    bfs.setMaxIterations(1000);</span>
+<span class="nc" id="L35">    Graph&lt;Long, Long, Long&gt; resulting = graph.run(bfs);</span>
+    //        resulting.getVertices().print();
+<span class="nc" id="L37">    System.out.println(resulting.getVertices().collect().toString());</span>
+<span class="nc" id="L38">  }</span>
+
+  public static void runTopoSort(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+<span class="nc" id="L41">    TopoSort topoSort = new TopoSort();</span>
+<span class="nc" id="L42">    topoSort.setMaxIterations(1000);</span>
+<span class="nc" id="L43">    Graph&lt;Long, Long, Long&gt; resulting = topoSort.run(graph);</span>
+<span class="nc" id="L44">    resulting.getVertices().print();</span>
+<span class="nc" id="L45">  }</span>
+
+  public static void runPageRank(Graph&lt;Long, Double, Double&gt; graph) throws Exception {
+<span class="nc" id="L48">    PageRank&lt;Long&gt; pr = new PageRank&lt;&gt;(1, 50);</span>
+<span class="nc" id="L49">    DataSet&lt;Vertex&lt;Long, Double&gt;&gt; resulting = graph.run(pr);</span>
+<span class="nc" id="L50">    resulting.print();</span>
+<span class="nc" id="L51">  }</span>
+
+  public static void runPPageRank(Graph&lt;Long, Double, Double&gt; graph) throws Exception {
+<span class="nc" id="L54">    PersonalizedPageRank&lt;Long&gt; ppr = new PersonalizedPageRank&lt;&gt;(2L, 1, 50);</span>
+<span class="nc" id="L55">    DataSet&lt;Vertex&lt;Long, Double&gt;&gt; resulting = graph.run(ppr);</span>
+<span class="nc" id="L56">    resulting.print();</span>
+<span class="nc" id="L57">  }</span>
+
+  public static void runDegreeCentrality(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+<span class="nc" id="L60">    DegreeCentrality&lt;Long, Long, Long&gt; dc = new DegreeCentrality&lt;&gt;();</span>
+<span class="nc" id="L61">    DataSet&lt;Vertex&lt;Long, Double&gt;&gt; resulting = graph.run(dc);</span>
+<span class="nc" id="L62">    resulting.print();</span>
+<span class="nc" id="L63">  }</span>
+
+  public static void runBetweennessCentrality(Graph&lt;Long, Long, Double&gt; graph) throws Exception {
+<span class="nc" id="L66">    BetweennessCentrality bc = new BetweennessCentrality();</span>
+<span class="nc" id="L67">    DataSet&lt;Vertex&lt;Long, Double&gt;&gt; resulting = graph.run(bc);</span>
+<span class="nc" id="L68">    resulting.print();</span>
+<span class="nc" id="L69">  }</span>
+
+  public static void runClosenessCentrality(Graph&lt;Long, Long, Double&gt; graph) throws Exception {
+<span class="nc" id="L72">    ClosenessCentrality cc = new ClosenessCentrality();</span>
+<span class="nc" id="L73">    DataSet&lt;Vertex&lt;Long, Double&gt;&gt; resulting = graph.run(cc);</span>
+<span class="nc" id="L74">    resulting.print();</span>
+<span class="nc" id="L75">  }</span>
+
+  public static void runSShortestPath(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+<span class="nc" id="L78">    SingleSourceShortestPath&lt;Long, Long, Long&gt; sssp = new SingleSourceShortestPath&lt;&gt;();</span>
+<span class="nc" id="L79">    sssp.setBeginVertex(1L);</span>
+<span class="nc" id="L80">    Graph&lt;Long, Long, Long&gt; resulting = sssp.run(graph);</span>
+<span class="nc" id="L81">    resulting.getVertices().print();</span>
+<span class="nc" id="L82">  }</span>
+
+  public static void runAShortestPath(Graph&lt;Long, Long, Double&gt; graph) throws Exception {
+<span class="nc" id="L85">    AllPairShortestPath apsp = new AllPairShortestPath();</span>
+<span class="nc" id="L86">    DataSet&lt;Vertex&lt;Long, Map&lt;Long, Double&gt;&gt;&gt; resulting = apsp.run(graph);</span>
+<span class="nc" id="L87">    resulting.print();</span>
+<span class="nc" id="L88">  }</span>
+
+  public static void runCycleDetection(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+<span class="nc" id="L91">    CycleDetection&lt;Long&gt; cd = new CycleDetection&lt;&gt;();</span>
+<span class="nc" id="L92">    DataSet&lt;Vertex&lt;Long, LinkedList&lt;Long&gt;&gt;&gt; resulting = cd.run(graph);</span>
+<span class="nc" id="L93">    resulting.print();</span>
+<span class="nc" id="L94">  }</span>
+
+  public static void runMinimumSpanningTree(Graph&lt;Long, Long, Double&gt; graph) throws Exception {
+<span class="nc" id="L97">    MinimumSpanningTree mst = new MinimumSpanningTree&lt;&gt;();</span>
+<span class="nc" id="L98">    DataSet&lt;Edge&lt;Long, Double&gt;&gt; resulting = mst.run(graph);</span>
+<span class="nc" id="L99">    resulting.print();</span>
+<span class="nc" id="L100">  }</span>
+
+  public static void runPathEnumeration(Graph&lt;Long, Long, Double&gt; graph) throws Exception {
+<span class="nc" id="L103">    DataSet&lt;Vertex&lt;Long, LinkedList&lt;Tuple2&lt;LinkedList&lt;Long&gt;, Double&gt;&gt;&gt;&gt; resulting =</span>
+<span class="nc" id="L104">        graph.run(new KSimplePathEnumeration&lt;Long, Long&gt;(1L, 8L, 25.0));</span>
+<span class="nc" id="L105">    resulting.print();</span>
+<span class="nc" id="L106">  }</span>
+
+  public static void runSingleSourceSimilarity(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+<span class="nc" id="L109">    SingleSourceSimilarity&lt;Long, Long, Long&gt; sss = new SingleSourceSimilarity&lt;&gt;();</span>
+<span class="nc" id="L110">    sss.setSourceVertex(2L);</span>
+<span class="nc" id="L111">    sss.setType(&quot;Cosine&quot;);</span>
+<span class="nc" id="L112">    DataSet&lt;Vertex&lt;Long, Double&gt;&gt; resulting = graph.run(sss);</span>
+<span class="nc" id="L113">    resulting.print();</span>
+<span class="nc" id="L114">  }</span>
+
+  public static void runAllPairSimilarity(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+<span class="nc" id="L117">    AllPairSimilarity&lt;Long, Long, Long&gt; aps = new AllPairSimilarity&lt;&gt;();</span>
+<span class="nc" id="L118">    aps.setType(&quot;Cosine&quot;);</span>
+<span class="nc" id="L119">    DataSet&lt;Vertex&lt;Long, Map&lt;Long, Double&gt;&gt;&gt; resulting = graph.run(aps);</span>
+<span class="nc" id="L120">    resulting.print();</span>
+<span class="nc" id="L121">  }</span>
+
+  public static void runKNearestNeighbors(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+    // add K-Nearest Neighbors code here
+<span class="nc" id="L125">  }</span>
+
+  public static void runLouvain(Graph&lt;Long, Double, Double&gt; graph) throws Exception {
+    // add Louvain code here
+<span class="nc" id="L129">    Louvain louvain = new Louvain();</span>
+<span class="nc" id="L130">    louvain.setNumOfCommunities(5);</span>
+<span class="nc" id="L131">    DataSet&lt;Vertex&lt;Long, Long&gt;&gt; resulting = louvain.run(graph);</span>
+<span class="nc" id="L132">    resulting.print();</span>
+<span class="nc" id="L133">  }</span>
+
+  public static void runLabelPropagation(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+    // add Label Propagation code here
+<span class="nc" id="L137">    DataSet&lt;Vertex&lt;Long, Long&gt;&gt; resulting = graph.run(new LabelPropagation&lt;&gt;());</span>
+<span class="nc" id="L138">    resulting.print();</span>
+<span class="nc" id="L139">  }</span>
+
+  public static void runWeaklyCC(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+    // add Weakly Connected Components code here
+<span class="nc" id="L143">    DataSet&lt;Vertex&lt;Long, Long&gt;&gt; resulting = graph.run(new WeaklyConnectedComponents&lt;&gt;());</span>
+<span class="nc" id="L144">    resulting.print();</span>
+<span class="nc" id="L145">  }</span>
+
+  public static void runStronglyCC(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+    // add Strongly Connected Components code here
+<span class="nc" id="L149">    DataSet&lt;Vertex&lt;Long, SCCVertexDataType&gt;&gt; resulting =</span>
+<span class="nc" id="L150">        graph.run(new StronglyConnectedComponents&lt;&gt;());</span>
+<span class="nc" id="L151">  }</span>
+
+  public static void runLocalClusteringCoefficient(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+    // add Local Clustering Coefficient code here
+<span class="nc" id="L155">    LocalClusterCoefficient localClusterCoefficient = new LocalClusterCoefficient();</span>
+<span class="nc" id="L156">    DataSet&lt;LocalClusteringCoefficient.Result&lt;Long&gt;&gt; resulting = localClusterCoefficient.run(graph);</span>
+<span class="nc" id="L157">  }</span>
+
+  public static void runTriangleCounting(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+    // add Triangle Counting code here
+<span class="nc" id="L161">    Long resulting = graph.run(new TriangleCounting&lt;&gt;());</span>
+<span class="nc" id="L162">    System.out.println(resulting);</span>
+<span class="nc" id="L163">  }</span>
+
+  public static void runTriangleListing(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+    // add Triangle Listing code here
+<span class="nc" id="L167">    DataSet&lt;Tuple3&lt;Long, Long, Long&gt;&gt; resulting = graph.run(new TriangleListing&lt;&gt;());</span>
+<span class="nc" id="L168">    resulting.print();</span>
+<span class="nc" id="L169">  }</span>
+
+  public static void runKCore(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+    // add k-core code here
+<span class="nc" id="L173">    KCore kCore = new KCore();</span>
+<span class="nc" id="L174">    kCore.setMaxIterations(1000);</span>
+<span class="nc" id="L175">    Graph&lt;Long, Long, Long&gt; resulting = kCore.run(graph);</span>
+<span class="nc" id="L176">    resulting.getVertices().print();</span>
+<span class="nc" id="L177">  }</span>
+
+  public static void runKTruss(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+    // add k-truss code here
+<span class="nc" id="L181">    KTruss kTruss = new KTruss();</span>
+<span class="nc" id="L182">    kTruss.setMaxIterations(1000);</span>
+<span class="nc" id="L183">    DataSet&lt;Tuple3&lt;Long, Long, Long&gt;&gt; result = kTruss.run(graph);</span>
+<span class="nc" id="L184">    result.print();</span>
+<span class="nc" id="L185">  }</span>
+
+  public static void runMaximalClique(Graph&lt;Long, Long, Long&gt; graph) throws Exception {
+    // add maximal clique code here
+<span class="nc" id="L189">    DataSet&lt;List&lt;Long&gt;&gt; result = graph.run(new MaximalClique&lt;&gt;());</span>
+<span class="nc" id="L190">    result.print();</span>
+<span class="nc" id="L191">  }</span>
+
+  public static void main(String[] args) throws Exception {
+<span class="nc" id="L194">    String vertexPath = &quot;data/taro.v&quot;;</span>
+<span class="nc" id="L195">    String edgePath = &quot;data/taro.e&quot;;</span>
+<span class="nc" id="L196">    ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();</span>
+
+<span class="nc" id="L198">    GraphLoader&lt;Long, Long, Long&gt; graphLoader =</span>
+        new GraphLoader&lt;&gt;(vertexPath, edgePath, env, Long.class, Long.class, Long.class);
+
+<span class="nc" id="L201">    Graph&lt;Long, Long, Long&gt; undirectedGraph = graphLoader.load(GraphType.UNDIRECT);</span>
+<span class="nc" id="L202">    runKCore(undirectedGraph);</span>
+    //        runKTruss(undirectedGraph);
+    //        runMaximalClique(undirectedGraph);
+    //        runBFS(undirectedGraph);
+    //
+    //        Graph&lt;Long, Long, Long&gt; directedGraph = graphLoader.load(GraphType.DIRECT);
+    //        runTopoSort(directedGraph);
+
+<span class="nc" id="L210">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

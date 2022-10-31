@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JaccardSimilaritySingleSource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.similarity</a> &gt; <span class="el_source">JaccardSimilaritySingleSource.java</span></div><h1>JaccardSimilaritySingleSource.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.similarity;
+
+import org.apache.flink.api.common.functions.FilterFunction;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.operators.Order;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.graph.*;
+import org.apache.flink.graph.spargel.MessageIterator;
+import org.apache.flink.graph.spargel.GatherFunction;
+import org.apache.flink.graph.spargel.ScatterFunction;
+import org.apache.flink.graph.spargel.ScatterGatherConfiguration;
+
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * The JaccardSimilaritySingleSource computes the jaccard similarity (the jaccard similarity between
+ * two sets A and B is computed by J(A,B)=|A鈭〣|/|A鈭狟|) between vertices and the given source vertex.
+ * The algorithm reports the top K results {@link DataSet}. The input graph must be a simple graph
+ * containing no duplicate edges or self-loops.
+ *
+ * @param &lt;K&gt; graph ID type
+ * @param &lt;VV&gt; vertex value type
+ * @param &lt;EV&gt; edge value type
+ */
+public class JaccardSimilaritySingleSource&lt;K extends Comparable&lt;? super K&gt;, VV, EV&gt;
+    implements GraphAlgorithm&lt;K, VV, EV, DataSet&lt;Vertex&lt;K, Double&gt;&gt;&gt; {
+  private final Integer topK;
+  private final K srcVertexId;
+  private SimilarityMeasure&lt;K&gt; measure;
+
+  /**
+   * @param srcVertexId id of the source vertex
+   * @param topK output the topK results
+   */
+<span class="nc" id="L38">  public JaccardSimilaritySingleSource(K srcVertexId, Integer topK) {</span>
+<span class="nc" id="L39">    this.srcVertexId = srcVertexId;</span>
+<span class="nc" id="L40">    this.topK = topK;</span>
+<span class="nc" id="L41">    measure = new JaccardSimilarityMeasure&lt;&gt;();</span>
+<span class="nc" id="L42">  }</span>
+
+  /**
+   * Set the measure method
+   *
+   * @param measure cosine similarity or jaccard similarity
+   */
+  public void setMeasure(SimilarityMeasure&lt;K&gt; measure) {
+<span class="nc" id="L50">    this.measure = measure;</span>
+<span class="nc" id="L51">  }</span>
+
+  public DataSet&lt;Vertex&lt;K, Double&gt;&gt; run(Graph&lt;K, VV, EV&gt; input) throws Exception {
+    // compute neighbors of the source
+<span class="nc" id="L55">    List&lt;K&gt; srcNbr =</span>
+        input
+<span class="nc" id="L57">            .getEdges()</span>
+<span class="nc" id="L58">            .filter(new EqualToSrcVertex&lt;&gt;(srcVertexId))</span>
+<span class="nc" id="L59">            .map(new EdgeTarget&lt;&gt;())</span>
+<span class="nc" id="L60">            .collect();</span>
+<span class="nc" id="L61">    srcNbr.sort(Comparable::compareTo);</span>
+
+<span class="nc" id="L63">    ScatterGatherConfiguration parameters = new ScatterGatherConfiguration();</span>
+<span class="nc" id="L64">    parameters.setName(&quot;Similarity Single Source Compute&quot;);</span>
+<span class="nc" id="L65">    parameters.setDirection(EdgeDirection.ALL);</span>
+<span class="nc" id="L66">    DataSet&lt;Vertex&lt;K, Double&gt;&gt; results =</span>
+        input
+<span class="nc" id="L68">            .mapVertices(new InitialVertexValue&lt;&gt;())</span>
+<span class="nc" id="L69">            .runScatterGatherIteration(</span>
+                new SimilarityMessenger&lt;&gt;(srcVertexId, srcNbr, measure),
+                new SimilarityUpdater&lt;&gt;(),
+                3,
+                parameters)
+<span class="nc" id="L74">            .filterOnVertices(new Positive&lt;&gt;())</span>
+<span class="nc" id="L75">            .getVertices();</span>
+
+    // sort by similarity scores and return the topK results
+<span class="nc" id="L78">    results =</span>
+        results
+<span class="nc" id="L80">            .sortPartition(</span>
+<span class="nc" id="L81">                (KeySelector&lt;Vertex&lt;K, Double&gt;, Double&gt;) vertex -&gt; vertex.f1, Order.DESCENDING)</span>
+<span class="nc" id="L82">            .setParallelism(1)</span>
+<span class="nc" id="L83">            .first(topK);</span>
+<span class="nc" id="L84">    return results;</span>
+  }
+
+  /**
+   * Get the edge target
+   *
+   * @param &lt;K&gt; graph id type
+   * @param &lt;EV&gt; edge value type
+   */
+  private static final class EdgeTarget&lt;K, EV&gt; implements MapFunction&lt;Edge&lt;K, EV&gt;, K&gt; {
+    public K map(Edge&lt;K, EV&gt; edge) {
+<span class="nc" id="L95">      return edge.f1;</span>
+    }
+  }
+
+  /**
+   * Map vertex value to -1.0
+   *
+   * @param &lt;K&gt; graph id type
+   * @param &lt;VV&gt; vertex value type
+   */
+  private static final class InitialVertexValue&lt;K, VV&gt;
+      implements MapFunction&lt;Vertex&lt;K, VV&gt;, Double&gt; {
+    public Double map(Vertex&lt;K, VV&gt; vertex) {
+<span class="nc" id="L108">      return -1.0;</span>
+    }
+  }
+
+  /**
+   * Retains the vertex whose similarity score &gt; 0.0
+   *
+   * @param &lt;K&gt; graph id type
+   */
+  private static final class Positive&lt;K&gt; implements FilterFunction&lt;Vertex&lt;K, Double&gt;&gt; {
+    public boolean filter(Vertex&lt;K, Double&gt; vertex) {
+<span class="nc bnc" id="L119" title="All 2 branches missed.">      return vertex.getValue() &gt; 0.0;</span>
+    }
+  }
+
+  /**
+   * Filter the edges whose source vertex not equals to the given vertex
+   *
+   * @param &lt;K&gt; graph ID type
+   * @param &lt;EV&gt; edge value type
+   */
+  private static final class EqualToSrcVertex&lt;K, EV&gt; implements FilterFunction&lt;Edge&lt;K, EV&gt;&gt; {
+    public final K src;
+
+<span class="nc" id="L132">    public EqualToSrcVertex(K src) {</span>
+<span class="nc" id="L133">      this.src = src;</span>
+<span class="nc" id="L134">    }</span>
+
+    public boolean filter(Edge&lt;K, EV&gt; edge) {
+<span class="nc" id="L137">      return edge.getSource().equals(src);</span>
+    }
+  }
+
+  /**
+   * Active vertex computes similarity
+   *
+   * @param &lt;K&gt; Graph id type
+   * @param &lt;EV&gt; edge value type
+   */
+  private static final class SimilarityMessenger&lt;K extends Comparable&lt;? super K&gt;, EV&gt;
+      extends ScatterFunction&lt;K, Double, Double, EV&gt; {
+    private final List&lt;K&gt; srcNbr;
+    private final K srcVertexId;
+    private final SimilarityMeasure&lt;K&gt; measure;
+
+<span class="nc" id="L153">    public SimilarityMessenger(K srcVertexId, List&lt;K&gt; srcNbr, SimilarityMeasure&lt;K&gt; measure) {</span>
+<span class="nc" id="L154">      this.srcNbr = srcNbr;</span>
+<span class="nc" id="L155">      this.srcVertexId = srcVertexId;</span>
+<span class="nc" id="L156">      this.measure = measure;</span>
+<span class="nc" id="L157">    }</span>
+
+    public void sendMessages(Vertex&lt;K, Double&gt; vertex) {
+<span class="nc bnc" id="L160" title="All 2 branches missed.">      if (getSuperstepNumber() == 1) {</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (vertex.getId().equals(srcVertexId)) {</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">          for (Edge&lt;K, EV&gt; edge : getEdges()) {</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            K target = edge.getSource().equals(srcVertexId) ? edge.getTarget() : edge.getSource();</span>
+<span class="nc" id="L164">            sendMessageTo(target, 0.0);</span>
+<span class="nc" id="L165">          }</span>
+        }
+<span class="nc bnc" id="L167" title="All 2 branches missed.">      } else if (getSuperstepNumber() == 2) {</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        for (Edge&lt;K, EV&gt; edge : getEdges()) {</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">          K target = edge.getSource().equals(vertex.getId()) ? edge.getTarget() : edge.getSource();</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">          if (!target.equals(srcVertexId)) sendMessageTo(target, 0.0);</span>
+<span class="nc" id="L171">        }</span>
+      } else {
+        // compute neighbors of the vertex
+<span class="nc" id="L174">        List&lt;K&gt; dstNbr = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        for (Edge&lt;K, EV&gt; edge : getEdges()) {</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">          K target = edge.getSource().equals(vertex.getId()) ? edge.getTarget() : edge.getSource();</span>
+<span class="nc" id="L177">          dstNbr.add(target);</span>
+<span class="nc" id="L178">        }</span>
+<span class="nc" id="L179">        dstNbr.sort(Comparable::compareTo);</span>
+
+<span class="nc" id="L181">        Double similarity = measure.similarityCompute(srcNbr, dstNbr);</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (similarity &gt; 0.0) sendMessageTo(vertex.f0, similarity);</span>
+      }
+<span class="nc" id="L184">    }</span>
+  }
+
+  /**
+   * Vertex that receives messages update its vertex value to the similarity score
+   *
+   * @param &lt;K&gt; graph ID type
+   */
+  private static final class SimilarityUpdater&lt;K&gt; extends GatherFunction&lt;K, Double, Double&gt; {
+    public void updateVertex(Vertex&lt;K, Double&gt; vertex, MessageIterator&lt;Double&gt; inMessages) {
+<span class="nc" id="L194">      setNewVertexValue(inMessages.next());</span>
+<span class="nc" id="L195">    }</span>
+  }
+
+  /**
+   * Measure the similarity between two lists
+   *
+   * @param &lt;K&gt; list element type
+   */
+<span class="nc" id="L203">  public abstract static class SimilarityMeasure&lt;K extends Comparable&lt;? super K&gt;&gt;</span>
+      implements Serializable {
+    abstract Double similarityCompute(List&lt;K&gt; srcNbr, List&lt;K&gt; dstNbr);
+
+    /**
+     * Compute the number of common elements between the two lists
+     *
+     * @param firstList the first list
+     * @param secondList the second list
+     * @return
+     */
+    public int commonNeighbor(List&lt;K&gt; firstList, List&lt;K&gt; secondList) {
+<span class="nc bnc" id="L215" title="All 4 branches missed.">      if (firstList.size() == 0 || secondList.size() == 0) return 0;</span>
+<span class="nc" id="L216">      int i = 0, j = 0;</span>
+<span class="nc" id="L217">      int result = 0;</span>
+<span class="nc bnc" id="L218" title="All 4 branches missed.">      while (i &lt; firstList.size() &amp;&amp; j &lt; secondList.size()) {</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">        if (firstList.get(i).equals(secondList.get(j))) {</span>
+<span class="nc" id="L220">          result++;</span>
+<span class="nc" id="L221">          i++;</span>
+<span class="nc" id="L222">          j++;</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        } else if (firstList.get(i).compareTo(secondList.get(j)) &lt; 0) {</span>
+<span class="nc" id="L224">          i++;</span>
+        } else {
+<span class="nc" id="L226">          j++;</span>
+        }
+      }
+<span class="nc" id="L229">      return result;</span>
+    }
+  }
+
+  /**
+   * Measure the jaccard similarity between two lists
+   *
+   * @param &lt;K&gt; graph id type
+   */
+<span class="nc" id="L238">  public static class JaccardSimilarityMeasure&lt;K extends Comparable&lt;? super K&gt;&gt;</span>
+      extends SimilarityMeasure&lt;K&gt; {
+    public Double similarityCompute(List&lt;K&gt; srcNbr, List&lt;K&gt; dstNbr) {
+<span class="nc" id="L241">      double commonNeighbor = commonNeighbor(srcNbr, dstNbr);</span>
+<span class="nc" id="L242">      return commonNeighbor / (srcNbr.size() + dstNbr.size() - commonNeighbor);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

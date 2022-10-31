@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleSourceShortestPath.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.path</a> &gt; <span class="el_source">SingleSourceShortestPath.java</span></div><h1>SingleSourceShortestPath.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.path;
+
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.spargel.GatherFunction;
+import org.apache.flink.graph.spargel.MessageIterator;
+import org.apache.flink.graph.spargel.ScatterFunction;
+
+/**
+ * This algorithm find the shortest path distance from the beginVertex to each vertex. In each
+ * SuperStep, a vertex use its distance and edge weight as a message sent to the target.
+ */
+<span class="fc" id="L16">public class SingleSourceShortestPath&lt;K, VV, EV&gt;</span>
+    implements GraphAlgorithm&lt;K, VV, Long, Graph&lt;K, Long, Long&gt;&gt; {
+
+<span class="fc" id="L19">  private Integer maxIterations = Integer.MAX_VALUE;</span>
+<span class="fc" id="L20">  private K beginVertex = null;</span>
+
+  /** Set the maximum iterations */
+  public void setMaxIterations(int maxIterations) {
+<span class="fc" id="L24">    this.maxIterations = maxIterations;</span>
+<span class="fc" id="L25">  }</span>
+
+  /** Set the begin vertex */
+  public void setBeginVertex(K beginVertex) {
+<span class="fc" id="L29">    this.beginVertex = beginVertex;</span>
+<span class="fc" id="L30">  }</span>
+
+  @Override
+  public Graph&lt;K, Long, Long&gt; run(Graph&lt;K, VV, Long&gt; graph) {
+
+<span class="fc" id="L35">    return graph</span>
+<span class="fc" id="L36">        .mapVertices(new InitialVertexValue&lt;&gt;(beginVertex))</span>
+<span class="fc" id="L37">        .runScatterGatherIteration(new SSSPMessenger&lt;&gt;(), new SSSPUpdater&lt;&gt;(), maxIterations);</span>
+  }
+
+  /** Initialize each vertex value to 0 */
+  private static final class InitialVertexValue&lt;K, VV&gt; implements MapFunction&lt;Vertex&lt;K, VV&gt;, Long&gt; {
+<span class="fc" id="L42">    private K beginVertex = null;</span>
+
+<span class="fc" id="L44">    private InitialVertexValue(K beginVertex) {</span>
+<span class="fc" id="L45">      this.beginVertex = beginVertex;</span>
+<span class="fc" id="L46">    }</span>
+
+    public Long map(Vertex&lt;K, VV&gt; vertex) {
+<span class="fc bfc" id="L49" title="All 2 branches covered.">      if (vertex.getId().equals(beginVertex)) {</span>
+<span class="fc" id="L50">        return 0L;</span>
+      } else {
+<span class="fc" id="L52">        return Long.MAX_VALUE;</span>
+      }
+    }
+  }
+
+  private static final class SSSPMessenger&lt;K&gt; extends ScatterFunction&lt;K, Long, Long, Long&gt; {
+    @Override
+    public void sendMessages(Vertex&lt;K, Long&gt; vertex) {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">      if (vertex.getValue() &lt; Long.MAX_VALUE) {</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (Edge&lt;K, Long&gt; e : getEdges()) {</span>
+<span class="fc" id="L62">          sendMessageTo(e.getTarget(), vertex.f1 + e.f2);</span>
+<span class="fc" id="L63">        }</span>
+      }
+<span class="fc" id="L65">    }</span>
+  }
+
+  private static final class SSSPUpdater&lt;K&gt; extends GatherFunction&lt;K, Long, Long&gt; {
+    @Override
+    public void updateVertex(Vertex&lt;K, Long&gt; vertex, MessageIterator&lt;Long&gt; inMessages) {
+<span class="fc" id="L71">      Long minDistance = Long.MAX_VALUE;</span>
+
+<span class="fc bfc" id="L73" title="All 2 branches covered.">      for (Long msg : inMessages) {</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (msg &lt; minDistance) {</span>
+<span class="fc" id="L75">          minDistance = msg;</span>
+        }
+<span class="fc" id="L77">      }</span>
+
+<span class="fc bfc" id="L79" title="All 2 branches covered.">      if (vertex.getValue() &gt; minDistance) {</span>
+<span class="fc" id="L80">        setNewVertexValue(minDistance);</span>
+      }
+<span class="fc" id="L82">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

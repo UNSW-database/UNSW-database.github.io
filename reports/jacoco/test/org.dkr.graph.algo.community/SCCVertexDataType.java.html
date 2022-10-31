@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SCCVertexDataType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.community</a> &gt; <span class="el_source">SCCVertexDataType.java</span></div><h1>SCCVertexDataType.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.community;
+
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple6;
+
+import java.util.HashSet;
+
+/**
+ * Data Type for StronglyConnectedComponents.
+ *
+ * &lt;p&gt;Tuple6&lt;Long, Long, Long, Long, HashSet&lt;Long&gt;, HashSet&lt;Long&gt;&gt; color, sccTag, minForward,
+ * minBackward, inNbr, outNbr
+ *
+ * &lt;p&gt;For color: (i)color=(-1, -1), means not assigned; (ii)(color, color), color&gt;=0, means founded;
+ * (iii)otherwise, (x, y), means in processing.
+ *
+ * &lt;p&gt;For sccTag: (i)sccTag = false, means not assigned; (ii)sccTag = true, means founded.
+ *
+ * &lt;p&gt;For minForward &amp; minBackward: -1, means Uninit.
+ */
+public class SCCVertexDataType
+    extends Tuple6&lt;Tuple2&lt;Long, Long&gt;, Boolean, Long, Long, HashSet&lt;Long&gt;, HashSet&lt;Long&gt;&gt; {
+
+  public SCCVertexDataType() {
+<span class="fc" id="L25">    this(new Tuple2&lt;&gt;(-1L, -1L), false, -1L, -1L, new HashSet&lt;Long&gt;(), new HashSet&lt;Long&gt;());</span>
+<span class="fc" id="L26">  }</span>
+
+  public SCCVertexDataType(
+      Tuple2&lt;Long, Long&gt; value0,
+      Boolean value1,
+      Long value2,
+      Long value3,
+      HashSet&lt;Long&gt; value4,
+<span class="fc" id="L34">      HashSet&lt;Long&gt; value5) {</span>
+<span class="fc" id="L35">    this.f0 = value0;</span>
+<span class="fc" id="L36">    this.f1 = value1;</span>
+<span class="fc" id="L37">    this.f2 = value2;</span>
+<span class="fc" id="L38">    this.f3 = value3;</span>
+<span class="fc" id="L39">    this.f4 = value4;</span>
+<span class="fc" id="L40">    this.f5 = value5;</span>
+<span class="fc" id="L41">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

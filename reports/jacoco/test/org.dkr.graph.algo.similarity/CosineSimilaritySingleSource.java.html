@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CosineSimilaritySingleSource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.similarity</a> &gt; <span class="el_source">CosineSimilaritySingleSource.java</span></div><h1>CosineSimilaritySingleSource.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.similarity;
+
+import java.util.List;
+
+/**
+ * The CosineSimilaritySingleSource computes the cosine similarity (the cosine similarity between
+ * two sets A and B is computed by similarity(A,B)=(A路B)/(|A|*|B|)) between vertices and the given
+ * source vertex, then reports the top K results {@link DataSet}. It is implemented by reference
+ * JaccardSimilaritySingleSource {@link JaccardSimilaritySingleSource} algorithm. The input graph
+ * must be a simple graph containing no duplicate edges or self-loops.
+ *
+ * @param &lt;K&gt; graph id type
+ * @param &lt;VV&gt; vertex value type
+ * @param &lt;EV&gt; edge value type
+ */
+public class CosineSimilaritySingleSource&lt;K extends Comparable&lt;? super K&gt;, VV, EV&gt;
+    extends JaccardSimilaritySingleSource&lt;K, VV, EV&gt; {
+  public CosineSimilaritySingleSource(K srcVertexId, Integer topK) {
+<span class="nc" id="L19">    super(srcVertexId, topK);</span>
+<span class="nc" id="L20">    setMeasure(new CosineSimilarityMeasure&lt;&gt;());</span>
+<span class="nc" id="L21">  }</span>
+
+  /**
+   * Measure the cosine similarity between two lists
+   *
+   * @param &lt;K&gt; graph id type
+   */
+<span class="nc" id="L28">  public static class CosineSimilarityMeasure&lt;K extends Comparable&lt;? super K&gt;&gt;</span>
+      extends SimilarityMeasure&lt;K&gt; {
+    public Double similarityCompute(List&lt;K&gt; srcNbr, List&lt;K&gt; dstNbr) {
+<span class="nc" id="L31">      return commonNeighbor(srcNbr, dstNbr) / (Math.sqrt(srcNbr.size()) * Math.sqrt(dstNbr.size()));</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

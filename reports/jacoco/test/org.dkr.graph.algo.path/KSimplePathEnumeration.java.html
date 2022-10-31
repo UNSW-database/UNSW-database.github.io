@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KSimplePathEnumeration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.path</a> &gt; <span class="el_source">KSimplePathEnumeration.java</span></div><h1>KSimplePathEnumeration.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.path;
+
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.pregel.ComputeFunction;
+import org.apache.flink.graph.pregel.MessageIterator;
+
+import java.util.Collections;
+import java.util.LinkedList;
+
+/**
+ * This algorithm find all paths from s to t which is no longer than K. First, the algorithm find
+ * all sub-path from s(or t) which is no longer than K. Second, the algorithm couple two sub-path as
+ * a complete path and check if the length is within K.
+ */
+public class KSimplePathEnumeration&lt;K, VV&gt;
+    implements GraphAlgorithm&lt;
+        K, VV, Double, DataSet&lt;Vertex&lt;K, LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt;&gt;&gt;&gt; {
+
+  private final K sVertex;
+  private final K tVertex;
+  private final Double k;
+
+<span class="fc" id="L29">  public KSimplePathEnumeration(K sVertex, K tVertex, Double k) {</span>
+<span class="fc" id="L30">    this.sVertex = sVertex;</span>
+<span class="fc" id="L31">    this.tVertex = tVertex;</span>
+<span class="fc" id="L32">    this.k = k;</span>
+<span class="fc" id="L33">  }</span>
+
+  public DataSet&lt;Vertex&lt;K, LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt;&gt;&gt; run(
+      Graph&lt;K, VV, Double&gt; graph) throws Exception {
+<span class="fc" id="L37">    return graph</span>
+<span class="fc" id="L38">        .mapVertices(new InitialVertexValue&lt;&gt;())</span>
+<span class="fc" id="L39">        .runVertexCentricIteration(new KSPEComputationFunction(sVertex, tVertex, k), null, 10)</span>
+<span class="fc" id="L40">        .mapVertices(new CouplingPath&lt;&gt;(sVertex, tVertex, k))</span>
+<span class="fc" id="L41">        .getVertices();</span>
+  }
+
+<span class="fc" id="L44">  public static final class InitialVertexValue&lt;K, VV&gt;</span>
+      implements MapFunction&lt;Vertex&lt;K, VV&gt;, LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt;&gt; {
+
+    @Override
+    public LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt; map(Vertex&lt;K, VV&gt; value) throws Exception {
+<span class="fc" id="L49">      return new LinkedList&lt;&gt;();</span>
+    }
+  }
+
+  /** Couple two sub-path as a complete path on each vertex. */
+  public static final class CouplingPath&lt;K&gt;
+      implements MapFunction&lt;
+          Vertex&lt;K, LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt;&gt;,
+          LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt;&gt; {
+
+    private final K sVertex;
+    private final K tVertex;
+    private final Double k;
+
+<span class="fc" id="L63">    public CouplingPath(K sVertex, K tVertex, Double k) {</span>
+<span class="fc" id="L64">      this.sVertex = sVertex;</span>
+<span class="fc" id="L65">      this.tVertex = tVertex;</span>
+<span class="fc" id="L66">      this.k = k;</span>
+<span class="fc" id="L67">    }</span>
+
+    public LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt; map(
+        Vertex&lt;K, LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt;&gt; value) throws Exception {
+<span class="fc" id="L71">      LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt; sList = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L72">      LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt; tList = new LinkedList&lt;&gt;();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">      for (Tuple2&lt;LinkedList&lt;K&gt;, Double&gt; path : value.f1) {</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (path.f0.getFirst().equals(sVertex)) {</span>
+<span class="fc" id="L75">          sList.push(path);</span>
+        } else {
+<span class="fc" id="L77">          path.f0.removeLast();</span>
+<span class="fc" id="L78">          Collections.reverse(path.f0);</span>
+<span class="fc" id="L79">          tList.push(path);</span>
+        }
+<span class="fc" id="L81">      }</span>
+
+<span class="fc" id="L83">      LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt; list = new LinkedList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">      for (Tuple2&lt;LinkedList&lt;K&gt;, Double&gt; sPath : sList) {</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        for (Tuple2&lt;LinkedList&lt;K&gt;, Double&gt; tPath : tList) {</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">          if (sPath.f1 + tPath.f1 &lt;= k) {</span>
+<span class="fc" id="L88">            sPath.f0.addAll(tPath.f0);</span>
+<span class="fc" id="L89">            sPath.f1 += tPath.f1;</span>
+<span class="fc" id="L90">            list.push(sPath);</span>
+          }
+<span class="fc" id="L92">        }</span>
+<span class="fc" id="L93">      }</span>
+
+<span class="fc" id="L95">      return list;</span>
+    }
+  }
+
+  /** Compute all sub-path from s or t. */
+  public static final class KSPEComputationFunction&lt;K&gt;
+      extends ComputeFunction&lt;
+          K,
+          LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt;,
+          Double,
+          LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt;&gt; {
+
+    private final Double k;
+    private final K sVertex;
+    private final K tVertex;
+
+<span class="fc" id="L111">    public KSPEComputationFunction(K sVertex, K tVertex, Double k) {</span>
+<span class="fc" id="L112">      this.sVertex = sVertex;</span>
+<span class="fc" id="L113">      this.tVertex = tVertex;</span>
+<span class="fc" id="L114">      this.k = k;</span>
+<span class="fc" id="L115">    }</span>
+
+    public void compute(
+        Vertex&lt;K, LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt;&gt; vertex,
+        MessageIterator&lt;LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt;&gt; messages) {
+<span class="fc" id="L120">      LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt; oldValue = vertex.getValue();</span>
+<span class="fc" id="L121">      LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt; newValue = new LinkedList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L123" title="All 2 branches covered.">      if (getSuperstepNumber() == 1) {</span>
+<span class="fc bfc" id="L124" title="All 4 branches covered.">        if (vertex.getId().equals(sVertex) || vertex.getId().equals(tVertex)) {</span>
+<span class="fc" id="L125">          Tuple2&lt;LinkedList&lt;K&gt;, Double&gt; list = new Tuple2&lt;&gt;(new LinkedList&lt;K&gt;(), 0.0);</span>
+<span class="fc" id="L126">          list.f0.add(vertex.getId());</span>
+<span class="fc" id="L127">          list.f1 = 0.0;</span>
+<span class="fc" id="L128">          newValue.push(list);</span>
+<span class="fc" id="L129">        }</span>
+      } else {
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        for (LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt; msg : messages) {</span>
+<span class="fc" id="L132">          newValue.addAll(msg);</span>
+<span class="fc" id="L133">        }</span>
+      }
+
+<span class="fc" id="L136">      oldValue.addAll(newValue);</span>
+<span class="fc" id="L137">      setNewVertexValue(oldValue);</span>
+
+<span class="fc bfc" id="L139" title="All 2 branches covered.">      for (Edge&lt;K, Double&gt; e : getEdges()) {</span>
+<span class="fc" id="L140">        LinkedList&lt;Tuple2&lt;LinkedList&lt;K&gt;, Double&gt;&gt; msgs = new LinkedList&lt;&gt;();</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        for (Tuple2&lt;LinkedList&lt;K&gt;, Double&gt; path : newValue) {</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">          if (path.f1 + e.f2 &lt;= k) {</span>
+<span class="fc" id="L143">            Tuple2&lt;LinkedList&lt;K&gt;, Double&gt; newPath =</span>
+<span class="fc" id="L144">                new Tuple2&lt;&gt;((LinkedList&lt;K&gt;) path.f0.clone(), path.f1);</span>
+<span class="fc" id="L145">            newPath.f0.add(e.getTarget());</span>
+<span class="fc" id="L146">            newPath.f1 = newPath.f1 + e.f2;</span>
+<span class="fc" id="L147">            msgs.push(newPath);</span>
+          }
+<span class="fc" id="L149">        }</span>
+<span class="fc" id="L150">        sendMessageTo(e.getTarget(), msgs);</span>
+<span class="fc" id="L151">      }</span>
+<span class="fc" id="L152">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

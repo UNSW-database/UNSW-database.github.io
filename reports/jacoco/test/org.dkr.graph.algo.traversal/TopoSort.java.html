@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TopoSort.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.traversal</a> &gt; <span class="el_source">TopoSort.java</span></div><h1>TopoSort.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.traversal;
+
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.VertexJoinFunction;
+import org.apache.flink.graph.spargel.GatherFunction;
+import org.apache.flink.graph.spargel.MessageIterator;
+import org.apache.flink.graph.spargel.ScatterFunction;
+import org.apache.flink.types.LongValue;
+
+/**
+ * The Topological Sort Algorithm computes the topological order of each vertex. Initially, vertices
+ * with in-degree=0 have value=0. In each superstep, if a vertex's value is `SuperstepNumber`-1, it
+ * will update their neighbor's values to `SuperstepNumber`. If vertices in a circle, its value will
+ * be -1.
+ *
+ * &lt;p&gt;Note the input graph must be a direct graph.
+ *
+ * @param &lt;K&gt; ID type
+ * @param &lt;VV&gt; vertex value type
+ * @param &lt;EV&gt; edge value type
+ */
+<span class="fc" id="L26">public class TopoSort&lt;K, VV, EV&gt; implements GraphAlgorithm&lt;K, VV, EV, Graph&lt;K, Long, EV&gt;&gt; {</span>
+
+<span class="fc" id="L28">  private int maxIterations = Integer.MAX_VALUE;</span>
+
+  /** Set the maximum iterations for the gelly */
+  public void setMaxIterations(int maxIterations) {
+<span class="fc" id="L32">    this.maxIterations = maxIterations;</span>
+<span class="fc" id="L33">  }</span>
+
+  /** TopoSort starts at vertices with inDegree = 0 joinWithVertices change the vertex value */
+  @Override
+  public Graph&lt;K, Long, EV&gt; run(Graph&lt;K, VV, EV&gt; graph) {
+
+<span class="fc" id="L39">    return graph</span>
+<span class="fc" id="L40">        .mapVertices(new InitialVertexValue&lt;&gt;())</span>
+<span class="fc" id="L41">        .joinWithVertices(</span>
+<span class="fc" id="L42">            graph.inDegrees(),</span>
+            (VertexJoinFunction&lt;Long, LongValue&gt;)
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                (vertexValue, inputValue) -&gt; inputValue.equals(new LongValue(0)) ? 0L : -1L)</span>
+<span class="fc" id="L45">        .runScatterGatherIteration(</span>
+            new TopoSortMessenger&lt;&gt;(), new VertexOrderUpdater&lt;&gt;(), maxIterations);
+  }
+
+  /** Initialize each vertex value to 0 */
+  private static final class InitialVertexValue&lt;K, VV&gt; implements MapFunction&lt;Vertex&lt;K, VV&gt;, Long&gt; {
+
+    @Override
+    public Long map(Vertex&lt;K, VV&gt; vertex) {
+<span class="fc" id="L54">      return 0L;</span>
+    }
+  }
+
+  /** Vertex that be updated in the last Super Step will sends messages */
+  private static final class TopoSortMessenger&lt;K, EV&gt; extends ScatterFunction&lt;K, Long, Long, EV&gt; {
+
+    @Override
+    public void sendMessages(Vertex&lt;K, Long&gt; vertex) {
+<span class="fc bfc" id="L63" title="All 2 branches covered.">      if (vertex.getValue() == getSuperstepNumber() - 1) {</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        for (Edge&lt;K, EV&gt; e : getEdges()) {</span>
+<span class="fc" id="L65">          sendMessageTo(e.getTarget(), 1L);</span>
+<span class="fc" id="L66">        }</span>
+      }
+<span class="fc" id="L68">    }</span>
+  }
+
+  /** Vertex that receives messages updates its value to the super step number */
+  private static final class VertexOrderUpdater&lt;K&gt; extends GatherFunction&lt;K, Long, Long&gt; {
+
+    @Override
+    public void updateVertex(Vertex&lt;K, Long&gt; vertex, MessageIterator&lt;Long&gt; inMessages) {
+<span class="fc" id="L76">      setNewVertexValue((long) (getSuperstepNumber()));</span>
+<span class="fc" id="L77">    }</span>
+  }
+
+  public int getMaxIterations() {
+<span class="fc" id="L81">    return maxIterations;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CycleDetection.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.path</a> &gt; <span class="el_source">CycleDetection.java</span></div><h1>CycleDetection.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.path;
+
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.Graph;
+import org.apache.flink.graph.GraphAlgorithm;
+import org.apache.flink.graph.Vertex;
+import org.apache.flink.graph.pregel.ComputeFunction;
+import org.apache.flink.graph.pregel.MessageIterator;
+
+import java.util.LinkedList;
+
+/**
+ * This algorithm detect a cycle in a undirected graph. The algorithm uses BFS and save all paths.
+ * If a vertex exists twice, a cycle is detected.
+ */
+<span class="fc" id="L18">public class CycleDetection&lt;EV&gt;</span>
+    implements GraphAlgorithm&lt;Long, Long, EV, DataSet&lt;Vertex&lt;Long, LinkedList&lt;Long&gt;&gt;&gt;&gt; {
+
+<span class="fc" id="L21">  private int maxIterations = Integer.MAX_VALUE;</span>
+
+  public void setMaxIterations(int maxIterations) {
+<span class="fc" id="L24">    this.maxIterations = maxIterations;</span>
+<span class="fc" id="L25">  }</span>
+
+  @Override
+  public DataSet&lt;Vertex&lt;Long, LinkedList&lt;Long&gt;&gt;&gt; run(Graph&lt;Long, Long, EV&gt; origraph) {
+<span class="fc" id="L29">    Graph&lt;Long, LinkedList&lt;Long&gt;, EV&gt; graph = origraph.mapVertices(new InitialVertexMapper());</span>
+<span class="fc" id="L30">    return graph</span>
+<span class="fc" id="L31">        .runVertexCentricIteration(new CDComputationFunction(), null, maxIterations)</span>
+<span class="fc" id="L32">        .getVertices();</span>
+  }
+
+<span class="fc" id="L35">  public static final class InitialVertexMapper</span>
+      implements MapFunction&lt;Vertex&lt;Long, Long&gt;, LinkedList&lt;Long&gt;&gt; {
+    @Override
+    public LinkedList&lt;Long&gt; map(Vertex&lt;Long, Long&gt; vertex) {
+<span class="fc" id="L39">	  return new LinkedList&lt;&gt;();</span>
+    }
+  }
+
+<span class="fc" id="L43">  public static final class CDComputationFunction&lt;EV&gt;</span>
+      extends ComputeFunction&lt;Long, LinkedList&lt;Long&gt;, EV, LinkedList&lt;Long&gt;&gt; {
+    @Override
+    public void compute(
+        Vertex&lt;Long, LinkedList&lt;Long&gt;&gt; vertex, MessageIterator&lt;LinkedList&lt;Long&gt;&gt; messages) {
+
+<span class="fc" id="L49">      LinkedList&lt;Long&gt; neighbor = new LinkedList&lt;&gt;();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">      for (Edge&lt;Long, EV&gt; edge : getEdges()) {</span>
+<span class="fc" id="L51">        neighbor.push(edge.getTarget());</span>
+<span class="fc" id="L52">      }</span>
+
+<span class="fc bfc" id="L54" title="All 2 branches covered.">      if (getSuperstepNumber() == 1) {</span>
+<span class="fc" id="L55">        LinkedList&lt;Long&gt; list = new LinkedList&lt;&gt;(vertex.f1);</span>
+<span class="fc" id="L56">        list.add(vertex.f0);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (Long v : neighbor) {</span>
+<span class="fc" id="L58">          sendMessageTo(v, list);</span>
+<span class="fc" id="L59">        }</span>
+
+<span class="fc" id="L61">      } else {</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (LinkedList&lt;Long&gt; msg : messages) {</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">          if (vertex.f0.equals(msg.get(0))) {</span>
+<span class="fc" id="L64">            setNewVertexValue(msg);</span>
+<span class="fc" id="L65">            return;</span>
+          }
+<span class="fc bfc" id="L67" title="All 2 branches covered.">          if (msg.contains(vertex.f0)) {</span>
+<span class="fc" id="L68">            return;</span>
+          }
+<span class="fc" id="L70">          msg.add(vertex.f0);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">          for (Long v : neighbor) {</span>
+<span class="fc" id="L72">            sendMessageTo(v, msg);</span>
+<span class="fc" id="L73">          }</span>
+<span class="fc" id="L74">        }</span>
+      }
+<span class="fc" id="L76">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

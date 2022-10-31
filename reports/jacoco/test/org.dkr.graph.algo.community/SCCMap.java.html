@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SCCMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">flinkalgo</a> &gt; <a href="index.source.html" class="el_package">org.dkr.graph.algo.community</a> &gt; <span class="el_source">SCCMap.java</span></div><h1>SCCMap.java</h1><pre class="source lang-java linenums">package org.dkr.graph.algo.community;
+
+import org.apache.flink.core.memory.DataInputView;
+import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.types.ListValue;
+import org.apache.flink.types.LongValue;
+import org.apache.flink.types.Value;
+
+import java.io.IOException;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+public class SCCMap implements Value, Map&lt;ListValue&lt;LongValue&gt;, LongValue&gt; {
+    private static final long serialVersionUID = 1L;
+
+    // type of the map's key
+    private final Class&lt;SCCList&gt; keyClass;
+    // type of the map's value
+    private final Class&lt;LongValue&gt; valueClass;
+    // encapsulated map
+    private final Map&lt;ListValue&lt;LongValue&gt;, LongValue&gt; map;
+
+    /**
+     * Initializes the encapsulated map with an empty HashMap.
+     */
+<span class="fc" id="L28">    public SCCMap() {</span>
+<span class="fc" id="L29">        this.keyClass = SCCList.class;</span>
+<span class="fc" id="L30">        this.valueClass = LongValue.class;</span>
+
+<span class="fc" id="L32">        this.map = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L33">    }</span>
+
+    /**
+     * Initializes the encapsulated map with a HashMap filled with all entries of the provided map.
+     *
+     * @param map Map holding all entries with which the new encapsulated map is filled.
+     */
+<span class="fc" id="L40">    public SCCMap(Map&lt;ListValue&lt;LongValue&gt;, LongValue&gt; map) {</span>
+<span class="fc" id="L41">        this.keyClass = SCCList.class;</span>
+<span class="fc" id="L42">        this.valueClass = LongValue.class;</span>
+
+<span class="fc" id="L44">        this.map = new HashMap&lt;&gt;(map);</span>
+<span class="fc" id="L45">    }</span>
+
+    @Override
+    public void read(final DataInputView in) throws IOException {
+<span class="fc" id="L49">        int size = in.readInt();</span>
+<span class="fc" id="L50">        this.map.clear();</span>
+
+        try {
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            for (; size &gt; 0; size--) {</span>
+<span class="fc" id="L54">                final ListValue&lt;LongValue&gt; key = this.keyClass.newInstance();</span>
+<span class="fc" id="L55">                final LongValue val = this.valueClass.newInstance();</span>
+<span class="fc" id="L56">                key.read(in);</span>
+<span class="fc" id="L57">                val.read(in);</span>
+<span class="fc" id="L58">                this.map.put(key, val);</span>
+            }
+<span class="nc" id="L60">        } catch (final InstantiationException | IllegalAccessException e) {</span>
+<span class="nc" id="L61">            throw new RuntimeException(e);</span>
+<span class="fc" id="L62">        }</span>
+<span class="fc" id="L63">    }</span>
+
+    @Override
+    public void write(final DataOutputView out) throws IOException {
+<span class="fc" id="L67">        out.writeInt(this.map.size());</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        for (final Map.Entry&lt;ListValue&lt;LongValue&gt;, LongValue&gt; entry : this.map.entrySet()) {</span>
+<span class="fc" id="L69">            entry.getKey().write(out);</span>
+<span class="fc" id="L70">            entry.getValue().write(out);</span>
+<span class="fc" id="L71">        }</span>
+<span class="fc" id="L72">    }</span>
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#clear()
+     */
+    @Override
+    public void clear() {
+<span class="fc" id="L80">        this.map.clear();</span>
+<span class="fc" id="L81">    }</span>
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#containsKey(java.lang.Object)
+     */
+    @Override
+    public boolean containsKey(final Object key) {
+<span class="fc" id="L89">        return this.map.containsKey(key);</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#containsValue(java.lang.Object)
+     */
+    @Override
+    public boolean containsValue(final Object value) {
+<span class="nc" id="L98">        return this.map.containsValue(value);</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#entrySet()
+     */
+    @Override
+    public Set&lt;Entry&lt;ListValue&lt;LongValue&gt;, LongValue&gt;&gt; entrySet() {
+<span class="fc" id="L107">        return this.map.entrySet();</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#get(java.lang.Object)
+     */
+    @Override
+    public LongValue get(final Object key) {
+<span class="fc" id="L116">        return this.map.get(key);</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#isEmpty()
+     */
+    @Override
+    public boolean isEmpty() {
+<span class="nc" id="L125">        return this.map.isEmpty();</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#keySet()
+     */
+    @Override
+    public Set&lt;ListValue&lt;LongValue&gt;&gt; keySet() {
+<span class="nc" id="L134">        return this.map.keySet();</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#put(java.lang.Object, java.lang.Object)
+     */
+    @Override
+    public LongValue put(final ListValue&lt;LongValue&gt; key, final LongValue value) {
+<span class="fc" id="L143">        return this.map.put(key, value);</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#putAll(java.util.Map)
+     */
+    @Override
+    public void putAll(final Map&lt;? extends ListValue&lt;LongValue&gt;, ? extends LongValue&gt; m) {
+<span class="nc" id="L152">        this.map.putAll(m);</span>
+<span class="nc" id="L153">    }</span>
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#remove(java.lang.Object)
+     */
+    @Override
+    public LongValue remove(final Object key) {
+<span class="nc" id="L161">        return this.map.remove(key);</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#size()
+     */
+    @Override
+    public int size() {
+<span class="fc" id="L170">        return this.map.size();</span>
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see java.util.Map#values()
+     */
+    @Override
+    public Collection&lt;LongValue&gt; values() {
+<span class="nc" id="L179">        return this.map.values();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>
