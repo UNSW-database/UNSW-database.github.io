@@ -95,10 +95,10 @@ import java.util.*;
 <span class="fc" id="L95">          Double w = msg.f2;</span>
 <span class="fc bfc" id="L96" title="All 2 branches covered.">          if (curMap.containsKey(msg.f1)) {</span>
 <span class="fc" id="L97">            Double u = curMap.get(msg.f1);</span>
-<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            if (w + v &lt; u) {</span>
-<span class="nc" id="L99">              msgToSend = w + v;</span>
-<span class="nc" id="L100">              curMap.replace(msg.f1, msgToSend);</span>
-<span class="nc" id="L101">              send = true;</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            if (w + v &lt; u) {</span>
+<span class="fc" id="L99">              msgToSend = w + v;</span>
+<span class="fc" id="L100">              curMap.replace(msg.f1, msgToSend);</span>
+<span class="fc" id="L101">              send = true;</span>
             }
 <span class="fc bfc" id="L103" title="All 2 branches covered.">          } else if (!vertex.getId().equals(msg.f1)) {</span>
 <span class="fc" id="L104">            msgToSend = w + v;</span>
