@@ -1,0 +1,1 @@
+packageSearchIndex = [{"l":"All Packages","u":"allpackages-index.html"},{"l":"org.dkr.graph.algo.centrality"},{"l":"org.dkr.graph.algo.cohesive"},{"l":"org.dkr.graph.algo.community"},{"l":"org.dkr.graph.algo.path"},{"l":"org.dkr.graph.algo.similarity"},{"l":"org.dkr.graph.algo.traversal"}];updateSearchResults();
